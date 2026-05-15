@@ -9,6 +9,7 @@ import PageWrapper from '@/components/ui/PageWrapper'
 import { formatCurrency } from '@/lib/utils'
 import installmentService from '@/services/installmentService'
 import { handleApiError } from '@/utils/errorHandler'
+import customerService from '@/services/customerService'
 
 // ── Icons for categories ──
 const CATEGORIES = [
@@ -23,8 +24,13 @@ const CATEGORIES = [
 ]
 
 // ── Validation Schemas ──
-const customerSelectSchema = z.object({
-  customerId: z.string().min(1, "Please select a customer"),
+const customerCreateSchema = z.object({
+  customerName: z.string().min(1, "Gahak ka naam zaroori hai"),
+  fatherName: z.string().min(1, "Walid ka naam zaroori hai"),
+  cnic: z.string().min(1, "CNIC zaroori hai"),
+  phone: z.string().min(1, "Mobile number zaroori hai"),
+  city: z.string().min(1, "Shehar ka naam zaroori hai"),
+  address: z.string().min(1, "Mukammal pata zaroori hai"),
 })
 
 // Dynamic schemas based on category group
@@ -90,7 +96,7 @@ export default function InstallmentWizard() {
   }
 
   const stepSchemas = [
-    customerSelectSchema,
+    customerCreateSchema,
     getProductSchema(),
     scheduleSchema,
     z.object({}) // Review step has no inputs
@@ -100,7 +106,10 @@ export default function InstallmentWizard() {
     resolver: zodResolver(stepSchemas[currentStep]),
     mode: 'onTouched',
     defaultValues: {
-      customerId: '',
+      // Customer
+      customerName: '', fatherName: '', cnic: '', phone: '', city: '', address: '',
+      customerId: '', // For edit mode or if we ever reuse existing
+      
       category: '',
       brand: '', model: '', color: '', condition: 'new', serialNumber: '',
       engineNo: '', chassisNo: '', regNo: '', distributor: '', year: '',
@@ -165,10 +174,10 @@ export default function InstallmentWizard() {
   const profitMargin = wInstallmentPrice - wPurchasePrice
 
   const steps = [
-    { id: 1, title: 'Customer', desc: 'Select or create' },
-    { id: 2, title: 'Product', desc: 'Item details' },
-    { id: 3, title: 'Schedule', desc: 'Payment plan' },
-    { id: 4, title: 'Review', desc: 'Confirm & save' },
+    { id: 1, title: 'Gahak', desc: 'Naya khata banayein' },
+    { id: 2, title: 'Samaan', desc: 'Tafseelaat' },
+    { id: 3, title: 'Qistain', desc: 'Adaigi ka plan' },
+    { id: 4, title: 'Review', desc: 'Tasdeeq' },
   ]
 
   const nextStep = async () => {
@@ -185,6 +194,24 @@ export default function InstallmentWizard() {
   const onSubmit = async (data) => {
     setIsSubmitting(true)
     try {
+      let finalCustomerId = data.customerId
+
+      // If we are not editing, we create the customer first
+      if (!isEditing) {
+        const customerData = new FormData()
+        customerData.append('fullName', data.customerName)
+        customerData.append('fatherName', data.fatherName)
+        customerData.append('cnic', data.cnic)
+        customerData.append('phone', data.phone)
+        customerData.append('city', data.city)
+        customerData.append('address', data.address)
+        
+        // Guarantors can be empty for now if not provided, backend might require them, but we pass empty string array or basic JSON
+        customerData.append('guarantors', JSON.stringify([]))
+
+        const createdCustomer = await customerService.createCustomer(customerData)
+        finalCustomerId = createdCustomer.data._id
+      }
       // Map frontend category to backend enum
       const backendCategory = data.category === 'tv' ? 'lcd' : data.category
       
@@ -192,7 +219,7 @@ export default function InstallmentWizard() {
       const backendSchedule = data.scheduleType.replace('-', '') // '10-day' -> '10day'
       
       const payload = {
-        customer: data.customerId,
+        customer: finalCustomerId,
         category: backendCategory,
         
         brand: data.brand,
@@ -301,45 +328,22 @@ export default function InstallmentWizard() {
             
             {/* STEP 1: Customer */}
             {currentStep === 0 && (
-              <div className="space-y-6 animate-fade-in max-w-lg mx-auto py-8">
-                <div className="text-center mb-8">
-                  <h3 className="text-xl font-bold text-slate-900">Select Customer</h3>
-                  <p className="text-sm text-slate-500 mt-1">Search for an existing customer to begin.</p>
+              <div className="space-y-6 animate-fade-in max-w-2xl mx-auto py-4">
+                <div className="text-center mb-6">
+                  <h3 className="text-xl font-bold text-slate-900">Naya Gahak (Customer)</h3>
+                  <p className="text-sm text-slate-500 mt-1">Gahak ki bunyadi maloomat darj karein.</p>
                 </div>
                 
-                <div className="relative">
-                  <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input 
-                    type="text" 
-                    placeholder="Search by name or CNIC..." 
-                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm text-base"
-                    onChange={(e) => {
-                      // Mock auto-select for demonstration
-                      if(e.target.value.length > 3) setValue('customerId', 'mock-id-1')
-                    }}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <InputField label="Gahak ka Naam" name="customerName" placeholder="Muhammad Ali" />
+                  <InputField label="Walid ka Naam" name="fatherName" placeholder="Ahmad Khan" />
+                  <InputField label="Shanakhti Card (CNIC)" name="cnic" placeholder="00000-0000000-0" />
+                  <InputField label="Mobile Number" name="phone" placeholder="0300-0000000" />
+                  <InputField label="Shehar" name="city" placeholder="Lahore" />
+                  <div className="md:col-span-2">
+                    <InputField label="Mukammal Pata (Address)" name="address" as="textarea" placeholder="Ghar ka mukammal pata..." />
+                  </div>
                 </div>
-                
-                {watch('customerId') ? (
-                  <div className="p-4 border border-blue-200 bg-blue-50/50 rounded-xl flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-lg">M</div>
-                      <div>
-                        <h4 className="font-bold text-slate-900">Muhammad Asif</h4>
-                        <p className="text-sm text-slate-500">34201-1234567-1</p>
-                      </div>
-                    </div>
-                    <Check className="text-emerald-500" size={24} />
-                  </div>
-                ) : (
-                  <div className="text-center mt-6">
-                    <span className="text-sm text-slate-500">Don't see them? </span>
-                    <Link to="/customers/new" className="text-sm font-semibold text-blue-600 hover:underline inline-flex items-center gap-1">
-                      <UserPlus size={16} /> Add New Customer
-                    </Link>
-                  </div>
-                )}
-                {errors.customerId && <p className="text-sm text-red-500 font-medium text-center">{errors.customerId.message}</p>}
               </div>
             )}
 
@@ -414,13 +418,13 @@ export default function InstallmentWizard() {
                       )}
                     </div>
 
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 mt-8">Pricing (Owner Config)</h3>
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 mt-8">Keemat (Pricing)</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-xl border border-slate-200">
-                      <InputField label="Your Purchase Price (Private)" name="ownerPurchasePrice" type="number" prefix="Rs." />
-                      <InputField label="Installment Sale Price" name="installmentPrice" type="number" prefix="Rs." />
+                      <InputField label="Dukaan Ki Khareed (Purchase Price)" name="ownerPurchasePrice" type="number" prefix="Rs." />
+                      <InputField label="Qistain Wali Keemat (Sale Price)" name="installmentPrice" type="number" prefix="Rs." />
                       
                       <div className="md:col-span-2 pt-2 flex items-center justify-between text-sm">
-                        <span className="text-slate-500 font-medium">Estimated Profit Margin:</span>
+                        <span className="text-slate-500 font-medium">Munafa (Profit):</span>
                         <span className={`font-bold ${profitMargin > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {formatCurrency(profitMargin)}
                         </span>
@@ -436,40 +440,40 @@ export default function InstallmentWizard() {
               <div className="space-y-8 animate-fade-in">
                 <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 flex items-center justify-between">
                   <div>
-                    <span className="text-xs text-blue-600 font-bold uppercase tracking-wider">Total Sale Price</span>
+                    <span className="text-xs text-blue-600 font-bold uppercase tracking-wider">Kul Rakam (Total Price)</span>
                     <div className="text-2xl font-black text-slate-900">{formatCurrency(wInstallmentPrice)}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-5">
-                    <InputField label="Advance Payment" name="advancePayment" type="number" prefix="Rs." />
+                    <InputField label="Peshgi Rakam (Advance Payment)" name="advancePayment" type="number" prefix="Rs." />
                     
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                      <span className="text-xs text-slate-500 font-bold uppercase">Remaining Amount</span>
+                      <span className="text-xs text-slate-500 font-bold uppercase">Baqaya Rakam</span>
                       <div className="text-xl font-bold text-red-600">{formatCurrency(remainingAmount)}</div>
                     </div>
 
-                    <InputField label="Number of Installments" name="installmentsCount" type="number" />
+                    <InputField label="Qistain (Installments Count)" name="installmentsCount" type="number" />
                     
                     <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">Payment Frequency</label>
+                      <label className="text-sm font-medium text-slate-700">Adaigi Ka Tareeqa (Frequency)</label>
                       <select {...register('scheduleType')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm">
-                        <option value="monthly">Monthly (Every 30 days)</option>
-                        <option value="10-day">10-Day (Every 10 days)</option>
-                        <option value="weekly">Weekly (Every 7 days)</option>
-                        <option value="daily">Daily</option>
+                        <option value="monthly">Mahana (Monthly)</option>
+                        <option value="10-day">Har 10 Din Baad</option>
+                        <option value="weekly">Haftawar (Weekly)</option>
+                        <option value="daily">Rozana (Daily)</option>
                       </select>
                     </div>
 
-                    <InputField label="Start Date (First Installment)" name="startDate" type="date" />
+                    <InputField label="Pehli Qist Ki Tareekh (Start Date)" name="startDate" type="date" />
                   </div>
 
                   <div className="space-y-4">
                     <h4 className="font-bold text-slate-900 border-b pb-2">Plan Preview</h4>
                     <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 flex flex-col h-full">
                       <div className="mb-4 text-center">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-bold block mb-1">Per Installment</span>
+                        <span className="text-xs text-slate-500 uppercase tracking-wider font-bold block mb-1">Har Qist (Per Installment)</span>
                         <span className="text-3xl font-black text-blue-600">{formatCurrency(perInstallment)}</span>
                       </div>
                       

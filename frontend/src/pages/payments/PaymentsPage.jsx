@@ -1,35 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Search, Filter, Calendar as CalendarIcon, 
   CheckCircle2, Clock, AlertCircle, X,
-  Printer, Download, IndianRupee
+  Printer, Download, Tag
 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import PageWrapper from '@/components/ui/PageWrapper'
-import StatusBadge from '@/components/ui/StatusBadge'
 import { formatCurrency, formatDate } from '@/lib/utils'
-
-// ── Dummy Data ─────────────────────────────────────────────
-const MOCK_DUE = [
-  { id: 101, customer: 'Muhammad Asif', cnic: '34201-1234567-1', product: 'Honda CD 70 - Red', dueAmount: 7500, remaining: 87500, dueDate: '2026-05-15', daysOverdue: 0, status: 'pending' },
-  { id: 102, customer: 'Ali Hassan', cnic: '36302-1122334-5', product: 'Suzuki Mehran', dueAmount: 25000, remaining: 450000, dueDate: '2026-05-15', daysOverdue: 0, status: 'pending' },
-]
-
-const MOCK_OVERDUE = [
-  { id: 201, customer: 'Tariq Mehmood', cnic: '36302-9876543-9', product: 'Samsung A54', dueAmount: 5000, remaining: 10000, dueDate: '2026-05-10', daysOverdue: 5, status: 'overdue' },
-]
-
-const MOCK_COLLECTED = [
-  { id: 301, receiptNo: 'REC-0515-01', customer: 'Sana Bibi', product: 'Haier 1.5T AC', amount: 12000, date: '2026-05-15T09:30:00Z', collector: 'Admin' },
-]
+import api from '@/services/api'
 
 export default function PaymentsPage() {
   const [activeTab, setActiveTab] = useState('due')
-  const [dueData, setDueData] = useState(MOCK_DUE)
-  const [overdueData, setOverdueData] = useState(MOCK_OVERDUE)
-  const [collectedData, setCollectedData] = useState(MOCK_COLLECTED)
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  const [dueData, setDueData] = useState([])
+  const [overdueData, setOverdueData] = useState([])
+  const [collectedData, setCollectedData] = useState([])
+  const [loading, setLoading] = useState(true)
   
   // Modal States
   const [collectModalOpen, setCollectModalOpen] = useState(false)
@@ -38,62 +28,121 @@ export default function PaymentsPage() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastReceipt, setLastReceipt] = useState(null)
 
-  const tabs = [
-    { id: 'due', label: "Today's Due", count: dueData.length },
-    { id: 'overdue', label: 'Overdue', count: overdueData.length, danger: true },
-    { id: 'collected', label: 'Collected Today', count: collectedData.length },
-    { id: 'all', label: 'All Payments', count: 0 },
+  const { register, handleSubmit, reset } = useForm()
+
+  const fetchVasooliData = async () => {
+    try {
+      setLoading(true)
+      const [vasooliRes, collectedRes] = await Promise.all([
+        api.get('/installments/vasooli'),
+        api.get('/payments/collected-today')
+      ]);
+
+      const allVasooli = vasooliRes.data.data || [];
+      setDueData(allVasooli.filter(v => v.isDueToday));
+      setOverdueData(allVasooli.filter(v => !v.isDueToday && v.cumulativeDue > 0));
+      
+      setCollectedData(collectedRes.data.data || []);
+    } catch (error) {
+      console.error(error);
+      toast.error('Data fetch karne mein masla aya');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchVasooliData()
+  }, [])
+
+  const categories = [
+    { id: 'all', label: 'Sab Samaan' },
+    { id: 'motorcycle', label: 'Motorcycle' },
+    { id: 'mobile', label: 'Mobile' },
+    { id: 'electronics', label: 'Electronics (AC/Fridge/LCD)' },
+    { id: 'car', label: 'Car' },
   ]
 
-  // Form for Collection Modal
-  const { register, handleSubmit, reset } = useForm()
+  const filterData = (data) => {
+    return data.filter(item => {
+      // Handle different nesting for Installments (due) vs Payments (collected)
+      const customerName = item.customer?.fullName?.toLowerCase() || '';
+      const customerCnic = item.customer?.cnic || '';
+      const itemCat = item.category || item.installment?.category || '';
+
+      const searchMatch = !searchQuery || 
+        customerName.includes(searchQuery.toLowerCase()) || 
+        customerCnic.includes(searchQuery);
+
+      let catMatch = true;
+      if (selectedCategory !== 'all') {
+        if (selectedCategory === 'electronics') {
+          catMatch = ['ac', 'lcd', 'washing_machine', 'fridge'].includes(itemCat);
+        } else {
+          catMatch = itemCat === selectedCategory;
+        }
+      }
+      return searchMatch && catMatch;
+    })
+  }
+
+  const filteredDue = filterData(dueData)
+  const filteredOverdue = filterData(overdueData)
+  const filteredCollected = filterData(collectedData)
+
+  const tabs = [
+    { id: 'due', label: "Aaj Ki Vasooli", count: filteredDue.length },
+    { id: 'overdue', label: 'Pichla Baqaya', count: filteredOverdue.length, danger: true },
+    { id: 'collected', label: 'Aaj Ki Jama Shuda', count: filteredCollected.length },
+  ]
 
   const openCollectModal = (payment) => {
     setSelectedPayment(payment)
     reset({
-      amount: payment.dueAmount,
+      amount: payment.cumulativeDue || payment.perInstallmentAmount,
       date: new Date().toISOString().split('T')[0],
-      collector: 'Admin',
       notes: ''
     })
     setCollectModalOpen(true)
   }
 
-  const handleCollect = (data, printReceipt = false) => {
+  const handleCollect = async (data, printReceipt = false) => {
     const amountNum = parseFloat(data.amount)
     
-    // Create new receipt record
-    const newReceipt = {
-      id: Date.now(),
-      receiptNo: `REC-0515-${Math.floor(Math.random() * 1000)}`,
-      customer: selectedPayment.customer,
-      cnic: selectedPayment.cnic,
-      product: selectedPayment.product,
-      amount: amountNum,
-      remaining: selectedPayment.remaining - amountNum,
-      date: data.date,
-      collector: data.collector,
-      notes: data.notes
-    }
+    try {
+      const response = await api.post('/payments', {
+        installment: selectedPayment._id,
+        customer: selectedPayment.customer._id,
+        amount: amountNum,
+        paymentDate: data.date,
+        notes: data.notes
+      });
 
-    // Update States
-    setCollectedData([newReceipt, ...collectedData])
-    if (activeTab === 'due') {
-      setDueData(dueData.filter(p => p.id !== selectedPayment.id))
-    } else {
-      setOverdueData(overdueData.filter(p => p.id !== selectedPayment.id))
-    }
+      const newPayment = response.data.data;
+      
+      toast.success(`Vasooli darj ho gayi — ${formatCurrency(amountNum)}`);
+      setCollectModalOpen(false)
+      
+      // Refresh Data
+      fetchVasooliData();
 
-    setCollectModalOpen(false)
-    toast.success(`Payment recorded — ${formatCurrency(amountNum)} from ${selectedPayment.customer}`)
-
-    if (printReceipt) {
-      setLastReceipt(newReceipt)
-      setReceiptModalOpen(true)
+      if (printReceipt) {
+        setLastReceipt({
+          receiptNo: newPayment.receiptNumber || `RCP-${new Date().getTime()}`,
+          customer: selectedPayment.customer.fullName,
+          cnic: selectedPayment.customer.cnic,
+          product: selectedPayment.brand + ' ' + selectedPayment.model,
+          amount: amountNum,
+          remaining: selectedPayment.remainingAmount - amountNum,
+          date: data.date
+        });
+        setReceiptModalOpen(true)
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Payment save karne mein error aya');
     }
   }
 
-  // jsPDF Generation
   const generatePDF = (receipt, action = 'download') => {
     const doc = new jsPDF()
     
@@ -130,15 +179,15 @@ export default function PaymentsPage() {
     doc.rect(20, 115, 170, 40, 'F')
     
     doc.setFont("helvetica", "bold")
-    doc.text("Amount Received:", 30, 130)
+    doc.text("Mili Hui Rakam:", 30, 130)
     doc.setFontSize(16)
-    doc.setTextColor(5, 150, 105) // emerald-600
+    doc.setTextColor(5, 150, 105) 
     doc.text(`Rs. ${receipt.amount.toLocaleString()}`, 80, 130)
     
     doc.setFontSize(11)
     doc.setTextColor(0, 0, 0)
     doc.setFont("helvetica", "normal")
-    doc.text("Remaining Balance:", 30, 145)
+    doc.text("Baqaya Rakam:", 30, 145)
     doc.text(`Rs. ${receipt.remaining.toLocaleString()}`, 80, 145)
 
     // Footer signatures
@@ -160,14 +209,17 @@ export default function PaymentsPage() {
     }
   }
 
-  // Tab Content Helper
   const renderTable = (dataToRender, isCollectionTab = false) => {
+    if (loading) {
+      return <div className="py-16 text-center text-slate-500">Data load ho raha hai...</div>
+    }
+
     if (dataToRender.length === 0) {
       return (
         <div className="py-16 text-center bg-white border border-slate-200 rounded-xl">
           <CheckCircle2 size={48} className="mx-auto text-slate-200 mb-4" />
-          <h3 className="text-lg font-bold text-slate-900">All caught up!</h3>
-          <p className="text-sm text-slate-500">No payments to show in this list.</p>
+          <h3 className="text-lg font-bold text-slate-900">Sab Clear Hai!</h3>
+          <p className="text-sm text-slate-500">Is list mein koi data nahi.</p>
         </div>
       )
     }
@@ -177,71 +229,63 @@ export default function PaymentsPage() {
         <table className="w-full text-sm text-left">
           <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
             <tr>
-              <th className="px-6 py-4">Customer</th>
-              <th className="px-6 py-4">Product</th>
+              <th className="px-6 py-4">Gahak (Customer)</th>
+              <th className="px-6 py-4">Samaan (Product)</th>
               {isCollectionTab ? (
                 <>
-                  <th className="px-6 py-4 text-right">Amount Received</th>
+                  <th className="px-6 py-4 text-right">Mili Hui Rakam</th>
                   <th className="px-6 py-4">Receipt No</th>
                   <th className="px-6 py-4">Collector</th>
                 </>
               ) : (
                 <>
-                  <th className="px-6 py-4">Due Date</th>
-                  <th className="px-6 py-4 text-right">Remaining</th>
-                  <th className="px-6 py-4 text-right">Due Amount</th>
-                  <th className="px-6 py-4 text-center">Actions</th>
+                  <th className="px-6 py-4 text-right">Baqaya Rakam</th>
+                  <th className="px-6 py-4 text-right">Kul Vasooli Amount</th>
+                  <th className="px-6 py-4 text-center">Action</th>
                 </>
               )}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {dataToRender.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-50/80 transition-colors group">
+              <tr key={row._id} className="hover:bg-slate-50/80 transition-colors group">
                 <td className="px-6 py-4">
-                  <div className="font-bold text-slate-900 cursor-pointer hover:text-blue-600 transition-colors">{row.customer}</div>
-                  {!isCollectionTab && <div className="text-xs text-slate-500">{row.cnic}</div>}
+                  <div className="font-bold text-slate-900 cursor-pointer hover:text-blue-600 transition-colors">
+                    {row.customer?.fullName}
+                  </div>
+                  {!isCollectionTab && <div className="text-xs text-slate-500">{row.customer?.cnic}</div>}
                 </td>
-                <td className="px-6 py-4 text-slate-600">{row.product}</td>
+                <td className="px-6 py-4 text-slate-600">
+                  <div className="font-medium text-slate-900">
+                    {isCollectionTab ? (row.installment?.brand + ' ' + row.installment?.model) : (row.brand + ' ' + row.model)}
+                  </div>
+                  <div className="text-xs text-slate-400 capitalize">{isCollectionTab ? row.installment?.category : row.category}</div>
+                </td>
                 
                 {isCollectionTab ? (
                   <>
                     <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(row.amount)}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.receiptNo}</td>
-                    <td className="px-6 py-4 text-slate-600">{row.collector}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-slate-500">{row.receiptNumber || 'N/A'}</td>
+                    <td className="px-6 py-4 text-slate-600">{row.receivedBy?.name || 'Admin'}</td>
                   </>
                 ) : (
                   <>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900">{formatDate(row.dueDate)}</div>
-                      {row.daysOverdue > 0 ? (
-                        <div className="text-xs font-bold text-red-500 flex items-center gap-1 mt-1">
-                          <AlertCircle size={12} /> {row.daysOverdue} days late
-                        </div>
-                      ) : (
-                        <div className="text-xs text-amber-500 flex items-center gap-1 mt-1">
-                          <Clock size={12} /> Due Today
+                    <td className="px-6 py-4 text-right font-medium text-slate-600">{formatCurrency(row.remainingAmount)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="text-lg font-black text-slate-900">{formatCurrency(row.cumulativeDue)}</div>
+                      {row.daysOverdue > 0 && (
+                        <div className="text-xs font-bold text-red-500 flex items-center justify-end gap-1 mt-1">
+                          <AlertCircle size={12} /> {row.daysOverdue} din late
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right font-medium text-slate-600">{formatCurrency(row.remaining)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="text-lg font-black text-slate-900">{formatCurrency(row.dueAmount)}</div>
-                    </td>
                     <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 lg:opacity-100">
-                        <button 
-                          className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-                        >
-                          Skip
-                        </button>
-                        <button 
-                          onClick={() => openCollectModal(row)}
-                          className="px-4 py-1.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
-                        >
-                          Collect
-                        </button>
-                      </div>
+                      <button 
+                        onClick={() => openCollectModal(row)}
+                        className="px-4 py-1.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+                      >
+                        Vasooli
+                      </button>
                     </td>
                   </>
                 )}
@@ -252,7 +296,7 @@ export default function PaymentsPage() {
         
         {isCollectionTab && dataToRender.length > 0 && (
           <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center">
-            <span className="font-medium text-slate-600">Total Collected Today:</span>
+            <span className="font-medium text-slate-600">Aaj Ki Kul Jama:</span>
             <span className="text-xl font-black text-emerald-600">
               {formatCurrency(dataToRender.reduce((sum, item) => sum + item.amount, 0))}
             </span>
@@ -264,8 +308,8 @@ export default function PaymentsPage() {
 
   return (
     <PageWrapper 
-      title="Payment Collection" 
-      subtitle="Manage daily collections, view overdue payments, and print receipts."
+      title="Vasooli (Payments)" 
+      subtitle="Aaj ki vasooli, pichla baqaya, aur jama shuda rakam."
     >
       <div className="space-y-6">
         
@@ -298,39 +342,41 @@ export default function PaymentsPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <select 
+              value={selectedCategory} 
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            >
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.label}</option>
+              ))}
+            </select>
+            
             <div className="relative">
-              <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="date" defaultValue={new Date().toISOString().split('T')[0]} className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Gahak ka naam ya CNIC..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 w-48" 
+              />
             </div>
-            <button className="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500">
-              <Filter size={18} />
-            </button>
           </div>
         </div>
 
         {/* ── Table Area ── */}
         <div className="animate-fade-in">
-          {activeTab === 'due' && renderTable(dueData)}
-          {activeTab === 'overdue' && renderTable(overdueData)}
+          {activeTab === 'due' && renderTable(filteredDue)}
+          {activeTab === 'overdue' && renderTable(filteredOverdue)}
           {activeTab === 'collected' && (
             <div className="space-y-4">
               <div className="flex justify-end">
                 <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors shadow-sm">
-                  <Printer size={16} /> Print Daily Sheet
+                  <Printer size={16} /> Daily Sheet Print Karein
                 </button>
               </div>
-              {renderTable(collectedData, true)}
-            </div>
-          )}
-          {activeTab === 'all' && (
-            <div className="py-16 text-center bg-white border border-slate-200 rounded-xl">
-              <Search size={48} className="mx-auto text-slate-200 mb-4" />
-              <h3 className="text-lg font-bold text-slate-900">Search All Payments</h3>
-              <p className="text-sm text-slate-500 mb-6">Use the search bar above to find specific payment records.</p>
-              <div className="max-w-md mx-auto relative">
-                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="Search by receipt no, customer name..." className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-              </div>
+              {renderTable(filteredCollected, true)}
             </div>
           )}
         </div>
@@ -341,7 +387,7 @@ export default function PaymentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-lg font-bold text-slate-900">Collect Payment</h2>
+              <h2 className="text-lg font-bold text-slate-900">Vasooli (Collect Payment)</h2>
               <button onClick={() => setCollectModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={20} />
               </button>
@@ -350,27 +396,27 @@ export default function PaymentsPage() {
             <form>
               <div className="p-6 space-y-5">
                 <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                  <div className="text-sm text-slate-500 mb-1">Customer & Product</div>
-                  <div className="font-bold text-slate-900">{selectedPayment.customer}</div>
-                  <div className="text-sm font-medium text-blue-700 mt-1">{selectedPayment.product}</div>
+                  <div className="text-sm text-slate-500 mb-1">Gahak & Samaan</div>
+                  <div className="font-bold text-slate-900">{selectedPayment.customer?.fullName}</div>
+                  <div className="text-sm font-medium text-blue-700 mt-1">{selectedPayment.brand} {selectedPayment.model}</div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-700">Amount Received (PKR)</label>
+                  <label className="text-sm font-bold text-slate-700">Mili Hui Rakam (PKR)</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">Rs.</span>
                     <input 
                       type="number" 
-                      {...register('amount')}
+                      {...register('amount', { required: true })}
                       className="w-full pl-12 pr-4 py-3 bg-white border-2 border-emerald-200 rounded-xl text-lg font-black text-slate-900 focus:outline-none focus:border-emerald-500 transition-colors"
                     />
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Remaining balance will be updated automatically.</p>
+                  <p className="text-xs text-slate-500 mt-1">Baqaya rakam khud update ho jaye gi.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Date</label>
+                    <label className="text-xs font-bold text-slate-700">Tareekh (Date)</label>
                     <input type="date" {...register('date')} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" />
                   </div>
                   <div className="space-y-1">
@@ -382,8 +428,8 @@ export default function PaymentsPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Notes (Optional)</label>
-                  <textarea {...register('notes')} rows={2} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" placeholder="e.g. Paid by brother"></textarea>
+                  <label className="text-xs font-bold text-slate-700">Notes / Remarks</label>
+                  <textarea {...register('notes')} rows={2} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" placeholder="Koi zaroori baat..."></textarea>
                 </div>
               </div>
 
@@ -419,7 +465,6 @@ export default function PaymentsPage() {
               </button>
             </div>
             
-            {/* The actual receipt preview (A4 roughly translated to web layout) */}
             <div className="p-8 overflow-y-auto bg-slate-200 flex-1 flex justify-center">
               <div className="bg-white w-full max-w-[400px] shadow-sm aspect-[1/1.4] p-8 flex flex-col relative print-area">
                 <div className="text-center mb-6">
@@ -434,26 +479,26 @@ export default function PaymentsPage() {
                 
                 <div className="space-y-2 text-xs mb-6">
                   <div className="flex justify-between"><span className="text-slate-500">Receipt No:</span><span className="font-mono font-bold">{lastReceipt.receiptNo}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Date:</span><span className="font-medium">{formatDate(lastReceipt.date)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Customer:</span><span className="font-bold">{lastReceipt.customer}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Product:</span><span className="font-medium">{lastReceipt.product}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Tareekh:</span><span className="font-medium">{formatDate(lastReceipt.date)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Gahak:</span><span className="font-bold">{lastReceipt.customer}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Samaan:</span><span className="font-medium">{lastReceipt.product}</span></div>
                 </div>
                 
                 <div className="bg-slate-50 border border-slate-200 rounded p-4 mb-8">
-                  <div className="text-center mb-1 text-[10px] text-slate-500 uppercase font-bold tracking-wider">Amount Received</div>
+                  <div className="text-center mb-1 text-[10px] text-slate-500 uppercase font-bold tracking-wider">Mili Hui Rakam</div>
                   <div className="text-center text-xl font-black text-slate-900">Rs. {lastReceipt.amount.toLocaleString()}</div>
                   <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between text-xs">
-                    <span className="text-slate-500">Remaining Balance:</span>
+                    <span className="text-slate-500">Baqaya Rakam:</span>
                     <span className="font-bold">Rs. {lastReceipt.remaining.toLocaleString()}</span>
                   </div>
                 </div>
 
                 <div className="mt-auto grid grid-cols-2 gap-8 text-center text-[10px]">
                   <div>
-                    <div className="border-t border-slate-400 pt-2 text-slate-600">Customer Signature</div>
+                    <div className="border-t border-slate-400 pt-2 text-slate-600">Gahak Ke Dastkhat</div>
                   </div>
                   <div>
-                    <div className="border-t border-slate-400 pt-2 text-slate-600">Authorized Sign</div>
+                    <div className="border-t border-slate-400 pt-2 text-slate-600">Dukan Ke Dastkhat</div>
                   </div>
                 </div>
               </div>

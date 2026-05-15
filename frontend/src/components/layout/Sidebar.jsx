@@ -12,7 +12,7 @@ const NAV_SECTIONS = [
     label: 'Main',
     items: [
       { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/customers',    icon: Users,            label: 'Customers' },
+      { to: '/customers',    icon: Users,            label: 'Vasooli / Khata' },
       { to: '/installments', icon: CreditCard,       label: 'Installments' },
       { to: '/payments',     icon: Wallet,           label: 'Payments' },
     ],

@@ -229,6 +229,79 @@ export const getOverdueInstallments = async (req, res) => {
   }
 };
 
+// @desc    Get consolidated Vasooli (Due) list
+// @route   GET /api/installments/vasooli
+// @access  Private
+export const getVasooliList = async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+    const endOfToday = new Date(now.setHours(23, 59, 59, 999));
+
+    const installments = await Installment.aggregate([
+      { $match: { isDeleted: false, status: { $ne: 'completed' } } },
+      {
+        $addFields: {
+          pastAndTodaySchedules: {
+            $filter: {
+              input: "$paymentSchedule",
+              as: "slot",
+              cond: { $lte: ["$$slot.dueDate", endOfToday] }
+            }
+          },
+          todaySchedules: {
+            $filter: {
+              input: "$paymentSchedule",
+              as: "slot",
+              cond: {
+                $and: [
+                  { $gte: ["$$slot.dueDate", startOfToday] },
+                  { $lte: ["$$slot.dueDate", endOfToday] }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          expectedUpToToday: { $multiply: [{ $size: "$pastAndTodaySchedules" }, "$perInstallmentAmount"] },
+          isDueToday: { $gt: [{ $size: "$todaySchedules" }, 0] }
+        }
+      },
+      {
+        $addFields: {
+          cumulativeDue: { $subtract: ["$expectedUpToToday", "$totalPaid"] }
+        }
+      },
+      // Keep only those who owe money
+      { $match: { cumulativeDue: { $gt: 0 } } },
+      {
+        $project: {
+          customer: 1, category: 1, brand: 1, model: 1,
+          perInstallmentAmount: 1, remainingAmount: 1, totalPaid: 1,
+          cumulativeDue: 1, isDueToday: 1,
+          daysOverdue: {
+            $floor: {
+              $divide: [
+                "$cumulativeDue",
+                "$perInstallmentAmount"
+              ]
+            }
+          }
+        }
+      },
+      { $sort: { cumulativeDue: -1 } }
+    ]);
+
+    await Customer.populate(installments, { path: 'customer', select: 'fullName cnic phone' });
+
+    res.status(200).json({ success: true, count: installments.length, data: installments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
 /**
  * Status Auto-Update Helper (To be called from Payment controller later)
  * When a payment is made, this recalculates totals and updates status.

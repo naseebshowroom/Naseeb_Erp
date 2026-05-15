@@ -1,107 +1,120 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, UserPlus, Eye, Trash2, Edit } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Search, PlusCircle, Eye, Edit, AlertCircle } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import PageWrapper from '@/components/ui/PageWrapper';
 import DataTable from '@/components/ui/DataTable';
-import { SkeletonTable, ErrorState } from '@/components/ui/Skeleton';
-import { useCustomers } from '@/hooks/useCustomers';
-import { formatDate, formatCurrency } from '@/utils/dateUtils';
-import customerService from '@/services/customerService';
-import { handleApiError } from '@/utils/errorHandler';
+import { ErrorState } from '@/components/ui/Skeleton';
+import { formatCurrency } from '@/utils/dateUtils';
+import installmentService from '@/services/installmentService';
 
 const columnHelper = createColumnHelper();
 
 export default function CustomersPage() {
   const navigate = useNavigate();
-  const { customers, pagination, isLoading, error, refetch, search, setSearch, status, setStatus, page, setPage } = useCustomers();
-  const [deletingId, setDeletingId] = useState(null);
+  const [data, setData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
 
-  const handleDelete = async (id, name) => {
-    if (!window.confirm(`Soft-delete ${name}? Their records will be preserved.`)) return;
-    setDeletingId(id);
+  const fetchOverdue = async () => {
+    setIsLoading(true);
     try {
-      await customerService.deleteCustomer(id);
-      toast.success(`${name} removed successfully.`);
-      refetch();
+      const res = await installmentService.getOverdue();
+      if (res.success) {
+        setData(res.data);
+      }
     } catch (err) {
-      handleApiError(err);
+      setError(err.message || 'Failed to fetch recovery data');
     } finally {
-      setDeletingId(null);
+      setIsLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchOverdue();
+  }, []);
+
   const columns = useMemo(() => [
-    columnHelper.accessor('photo', {
-      header: '',
-      enableSorting: false,
+    columnHelper.accessor('customer.fullName', {
+      header: 'Gahak ka Naam',
       cell: (info) => {
         const row = info.row.original;
         return (
-          <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center overflow-hidden shrink-0">
-            {row.photo ? <img src={row.photo} alt={row.fullName} className="w-full h-full object-cover" /> : row.fullName?.charAt(0)}
+          <div>
+            <p className="font-bold text-slate-900">{info.getValue() || 'N/A'}</p>
+            <p className="text-xs text-slate-500">{row.customer?.phone || ''}</p>
           </div>
         );
       },
     }),
-    columnHelper.accessor('fullName', {
-      header: 'Customer',
-      cell: (info) => (
-        <div>
-          <p className="font-bold text-slate-900">{info.getValue()}</p>
-          <p className="text-xs text-slate-500">{info.row.original.cnic}</p>
-        </div>
-      ),
-    }),
-    columnHelper.accessor('phone', {
-      header: 'Phone',
-      cell: (info) => <span className="text-slate-600">{info.getValue()}</span>,
-    }),
-    columnHelper.accessor('activeInstallments', {
-      header: 'Active Plans',
-      cell: (info) => <span className="font-bold text-blue-600">{info.getValue() ?? 0}</span>,
-    }),
-    columnHelper.accessor('remainingBalance', {
-      header: 'Remaining Balance',
-      cell: (info) => <span className="font-bold text-slate-900">{formatCurrency(info.getValue() ?? 0)}</span>,
-    }),
-    columnHelper.accessor('status', {
-      header: 'Status',
+    columnHelper.accessor('category', {
+      header: 'Samaan',
       cell: (info) => {
-        const s = info.getValue();
-        const colors = { active: 'bg-emerald-100 text-emerald-800', completed: 'bg-blue-100 text-blue-800', defaulted: 'bg-red-100 text-red-800' };
-        return <span className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${colors[s] || 'bg-slate-100 text-slate-800'}`}>{s}</span>;
+        const row = info.row.original;
+        return (
+          <div>
+            <p className="font-bold text-slate-700 capitalize">{info.getValue()}</p>
+            <p className="text-xs text-slate-500">{row.brand} {row.model}</p>
+          </div>
+        );
+      },
+    }),
+    columnHelper.accessor('perInstallmentAmount', {
+      header: 'Qist Amount',
+      cell: (info) => <span className="font-bold text-red-600">{formatCurrency(info.getValue() ?? 0)}</span>,
+    }),
+    columnHelper.accessor('daysOverdue', {
+      header: 'Din Oopar',
+      cell: (info) => {
+        const days = info.getValue() || 0;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-red-100 text-red-700 border border-red-200">
+            <AlertCircle size={14} /> {days} Din
+          </span>
+        );
       },
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'Actions',
+      header: 'Amal (Actions)',
       cell: (info) => {
         const row = info.row.original;
         return (
           <div className="flex items-center gap-1">
-            <button onClick={() => navigate(`/customers/${row._id}`)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Eye size={16} /></button>
-            <button onClick={() => navigate(`/customers/${row._id}/edit`)} className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg"><Edit size={16} /></button>
-            <button onClick={() => handleDelete(row._id, row.fullName)} disabled={deletingId === row._id} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-40"><Trash2 size={16} /></button>
+            <button onClick={() => navigate(`/installments/${row._id}`)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="View Installment"><Eye size={16} /></button>
+            <button onClick={() => navigate(`/installments/${row._id}/edit`)} className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Edit Installment"><Edit size={16} /></button>
           </div>
         );
       },
     }),
-  ], [navigate, deletingId]);
+  ], [navigate]);
+
+  // Client-side search since we fetched all overdue
+  const filteredData = useMemo(() => {
+    if (!search) return data;
+    const lower = search.toLowerCase();
+    return data.filter(item => 
+      item.customer?.fullName?.toLowerCase().includes(lower) ||
+      item.customer?.phone?.includes(lower) ||
+      item.customer?.cnic?.includes(lower) ||
+      item.category?.toLowerCase().includes(lower) ||
+      item.brand?.toLowerCase().includes(lower)
+    );
+  }, [data, search]);
 
   return (
     <PageWrapper
-      title="Customers"
-      subtitle="Manage your complete customer database."
+      title="Vasooli / Khata"
+      subtitle="Baqaya qiston ki wasooli ka record (Overdue Recoveries)."
       actions={
-        <Link to="/customers/new" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 shadow-sm">
-          <UserPlus size={16} /> Add Customer
+        <Link to="/installments/new" className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 shadow-sm">
+          <PlusCircle size={16} /> Naya Khata
         </Link>
       }
     >
       {error ? (
-        <ErrorState message={error} onRetry={refetch} />
+        <ErrorState message={error} onRetry={fetchOverdue} />
       ) : (
         <div className="erp-card overflow-hidden">
           {/* Filter Bar */}
@@ -112,34 +125,22 @@ export default function CustomersPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, CNIC, phone..."
+                placeholder="Naam, CNIC, ya phone se talash karein..."
                 className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none"
-            >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="defaulted">Defaulted</option>
-            </select>
+            
             <div className="sm:ml-auto text-sm text-slate-500 flex items-center font-medium">
-              {pagination.total} customers found
+              Kul {filteredData.length} records
             </div>
           </div>
 
           <DataTable
             columns={columns}
-            data={customers}
+            data={filteredData}
             isLoading={isLoading}
-            pageCount={pagination.pages}
-            pagination={{ pageIndex: page - 1, pageSize: 10 }}
-            onPaginate={({ pageIndex }) => setPage(pageIndex + 1)}
-            emptyTitle="No customers found"
-            emptyIcon="👥"
+            emptyTitle="Koi wasooli baqi nahi"
+            emptyIcon="✅"
           />
         </div>
       )}

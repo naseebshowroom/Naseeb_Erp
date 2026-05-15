@@ -22,6 +22,11 @@ const paymentService = {
     return res.data;
   },
 
+  getDailySummary: async (date) => {
+    const res = await api.get(API_ENDPOINTS.PAYMENTS.SUMMARY_DAILY, { params: { date } });
+    return res.data;
+  },
+
   /**
    * Record a payment. Backend runs this in a MongoDB transaction.
    * @param {{ installmentId, amount, receivedBy, notes, scheduleEntryId }} data

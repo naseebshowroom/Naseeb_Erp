@@ -36,6 +36,7 @@ export const API_ENDPOINTS = {
     DUE_TODAY:       '/payments/today',
     OVERDUE:         '/payments/overdue',
     COLLECTED_TODAY: '/payments/collected-today',
+    SUMMARY_DAILY:   '/payments/summary/daily',
     RECORD:          '/payments',
     RECEIPT:         (id) => `/payments/receipt/${id}`,
     DELETE:          (id) => `/payments/${id}`,
