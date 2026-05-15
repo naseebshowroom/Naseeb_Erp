@@ -1,0 +1,76 @@
+services:
+  # ── Backend API (Node.js / Express) ──────────────────────────────────────
+  - type: web
+    name: kiraya-erp-api
+    env: node
+    region: oregon          # free tier regions: oregon, frankfurt
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+
+    # All secrets are set in the Render dashboard.
+    # Below is just documentation — DO NOT put real values here.
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 5000
+
+      # MongoDB Atlas connection string
+      - key: MONGO_URI
+        sync: false         # "sync: false" means Render will ask you to set it manually
+
+      # JWT — generate with:  node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+      - key: JWT_SECRET
+        generateValue: true # Render auto-generates a secure random value
+
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+
+      - key: JWT_ACCESS_EXPIRES
+        value: 1h
+
+      - key: JWT_REFRESH_EXPIRES
+        value: 7d
+
+      # Exact Vercel frontend URL (no trailing slash)
+      - key: CLIENT_URL
+        sync: false
+
+      - key: RATE_LIMIT_WINDOW
+        value: 15
+
+      - key: RATE_LIMIT_MAX
+        value: 100
+
+      # Cloudinary — set manually in Render dashboard
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+  # ── Cron Job: Keep-Alive Ping (prevents Render free-tier sleep) ──────────
+  # Pings the health endpoint every 10 minutes.
+  - type: cron
+    name: kiraya-keep-alive
+    env: node
+    plan: free
+    region: oregon
+    schedule: "*/10 * * * *"   # every 10 minutes
+    buildCommand: echo "keep-alive"
+    startCommand: >
+      node -e "
+        const https = require('https');
+        https.get(process.env.HEALTH_URL, (r) => {
+          console.log('Keep-alive ping status:', r.statusCode);
+        }).on('error', (e) => {
+          console.error('Keep-alive ping failed:', e.message);
+        });
+      "
+    envVars:
+      - key: HEALTH_URL
+        sync: false   # set to https://kiraya-erp-api.onrender.com/api/health

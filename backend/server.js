@@ -1,0 +1,171 @@
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import compression from 'compression';
+import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
+import 'express-async-errors';
+import routes from './routes/index.js';
+
+// ── Load environment variables ─────────────────────────────────────────────
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kiraya_erp';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// ── Security Headers ────────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow Cloudinary images
+}));
+
+// ── CORS ────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  process.env.CLIENT_URL || 'http://localhost:3000',
+  'http://localhost:3000',
+  'http://localhost:5173', // Vite dev server
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS policy violation: origin ${origin} not allowed.`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// ── Response Compression ────────────────────────────────────────────────────
+app.use(compression());
+
+// ── Request Logging ─────────────────────────────────────────────────────────
+app.use(morgan(isProduction ? 'combined' : 'dev'));
+
+// ── Body Parsers ─────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
+
+// ── Rate Limiting ───────────────────────────────────────────────────────────
+const limiter = rateLimit({
+  windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW) || 15) * 60 * 1000,
+  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please slow down and try again later.' },
+  skip: (req) => req.path === '/api/health', // don't rate-limit health checks
+});
+app.use('/api', limiter);
+
+// ── Health Check Endpoint ───────────────────────────────────────────────────
+// Render pings this to verify the service is alive. Keep it lightweight.
+app.get('/api/health', (req, res) => {
+  const dbState = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  res.status(200).json({
+    success: true,
+    status: 'healthy',
+    environment: process.env.NODE_ENV,
+    database: dbState[mongoose.connection.readyState] || 'unknown',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()) + 's',
+  });
+});
+
+// ── API Routes ───────────────────────────────────────────────────────────────
+app.use('/api', routes);
+
+// ── 404 Handler ──────────────────────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found.` });
+});
+
+// ── Global Error Handler ─────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(`[${new Date().toISOString()}] ERROR:`, err.message);
+  if (!isProduction) console.error(err.stack);
+
+  const status = err.statusCode || err.status || 500;
+  res.status(status).json({
+    success: false,
+    message: isProduction && status === 500
+      ? 'Internal server error. Please contact support.'
+      : err.message || 'Internal Server Error',
+  });
+});
+
+// ── MongoDB Connection & Server Start ─────────────────────────────────────────
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    console.log(`✅ MongoDB connected: ${conn.connection.host}`);
+  } catch (err) {
+    console.error(`❌ MongoDB connection error: ${err.message}`);
+    process.exit(1);
+  }
+};
+
+// Mongoose connection event handlers
+mongoose.connection.on('error', (err) => {
+  console.error(`MongoDB runtime error: ${err.message}`);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️  MongoDB disconnected. Attempting to reconnect...');
+});
+
+// Start server after DB connects
+const startServer = async () => {
+  await connectDB();
+
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 Kiraya ERP API running in [${process.env.NODE_ENV}] mode on port ${PORT}`);
+    console.log(`   Health check: http://localhost:${PORT}/api/health`);
+  });
+
+  // ── Graceful Shutdown (SIGTERM from Render/Docker/PM2) ─────────────────────
+  const shutdown = (signal) => {
+    console.log(`\n${signal} received. Closing server gracefully...`);
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      await mongoose.connection.close();
+      console.log('MongoDB connection closed. Process exiting.');
+      process.exit(0);
+    });
+
+    // Force-exit if graceful shutdown takes too long
+    setTimeout(() => {
+      console.error('Forced exit after 10s timeout.');
+      process.exit(1);
+    }, 10_000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+};
+
+// ── Unhandled Error Safety Nets ───────────────────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Promise Rejection at:', promise, 'reason:', reason);
+  // Don't crash — log and continue. In production, alert via monitoring service.
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err.message);
+  // Uncaught exceptions corrupt process state — restart is required.
+  process.exit(1);
+});
+
+startServer();
