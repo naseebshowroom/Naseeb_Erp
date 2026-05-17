@@ -7,10 +7,13 @@ import {
   getDistributorPayables,
   exportReport,
 } from '../controllers/reports.controller.js';
-import { protect } from '../middleware/auth.middleware.js';
+import { protect, authorizeRoles } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+// Apply protection and Role check to ALL reports routes
 router.use(protect);
+router.use(authorizeRoles('owner', 'manager'));
 
 router.get('/financial',    getFinancialSummary);
 router.get('/monthly',      getMonthlyReport);

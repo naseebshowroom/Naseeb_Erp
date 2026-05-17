@@ -56,17 +56,36 @@ export default function CustomerProfile() {
 
   const customer = data;
 
+  // Stats calculation
+  const activeInstallments = customer.installments?.filter(i => i.status !== 'completed') || [];
+  const totalPaid = customer.installments?.reduce((acc, i) => acc + (i.totalPaid || 0), 0) || 0;
+  const totalRemaining = customer.installments?.reduce((acc, i) => acc + (i.remainingAmount || 0), 0) || 0;
+
+  const sendWhatsAppReminder = () => {
+    const customerName = customer.fullName;
+    const phone = customer.phone;
+    
+    let formattedPhone = phone.replace(/[^0-9]/g, '');
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '92' + formattedPhone.substring(1);
+    }
+    
+    const nextQist = activeInstallments[0]
+      ? `Rs. ${activeInstallments[0].perInstallmentAmount}`
+      : `Rs. ${totalRemaining}`;
+
+    const text = `Assalam-o-Alaikum ${customerName}, Naseeb Autos & Showroom Khuzdar ki taraf se guzarish hai ke aapki qist (${nextQist}) baqaya hai. Bara-e-maharbani jald az jald jama karwa kar apna record saaf rakhein. Shukriya!`;
+    
+    const url = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
   const tabs = [
     { id: 'overview', label: 'Overview (Tafseel)', icon: User },
     { id: 'installments', label: 'Installments (Khatey)', icon: CreditCard },
     { id: 'payments', label: 'Payments (Adaigiyan)', icon: Wallet },
     { id: 'documents', label: 'Documents', icon: FileText },
   ];
-
-  // Stats calculation
-  const activeInstallments = customer.installments?.filter(i => i.status !== 'completed') || [];
-  const totalPaid = customer.installments?.reduce((acc, i) => acc + (i.totalPaid || 0), 0) || 0;
-  const totalRemaining = customer.installments?.reduce((acc, i) => acc + (i.remainingAmount || 0), 0) || 0;
 
   return (
     <PageWrapper 
@@ -107,16 +126,24 @@ export default function CustomerProfile() {
               <StatusBadge status={customer.status} />
             </div>
             
-            <div className="w-full mt-6 space-y-3 text-sm text-left">
-              <div className="flex items-center gap-3 text-slate-600">
-                <Phone size={16} className="text-slate-400 shrink-0" />
-                <span>{customer.phone}</span>
+            <div className="w-full mt-6 space-y-4 text-sm text-left">
+              <div className="flex items-center justify-between py-1 border-b border-slate-100">
+                <div className="flex items-center gap-3 text-slate-600">
+                  <Phone size={16} className="text-slate-400 shrink-0" />
+                  <span className="font-semibold">{customer.phone}</span>
+                </div>
+                <button
+                  onClick={sendWhatsAppReminder}
+                  className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold text-white bg-[#25D366] hover:bg-[#20ba5a] rounded-lg shadow-sm transition-colors cursor-pointer shrink-0"
+                >
+                  💬 Reminder
+                </button>
               </div>
-              <div className="flex items-start gap-3 text-slate-600">
+              <div className="flex items-start gap-3 text-slate-600 py-1 border-b border-slate-100">
                 <MapPin size={16} className="text-slate-400 shrink-0 mt-0.5" />
                 <span className="leading-tight">{customer.address}, {customer.city}</span>
               </div>
-              <div className="flex items-center gap-3 text-slate-600">
+              <div className="flex items-center gap-3 text-slate-600 py-1">
                 <Calendar size={16} className="text-slate-400 shrink-0" />
                 <span>Registered: {formatDate(customer.createdAt)}</span>
               </div>

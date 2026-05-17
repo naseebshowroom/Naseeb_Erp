@@ -103,6 +103,10 @@ export const recordPayment = async (req, res) => {
 // @access  Private
 export const getPayments = async (req, res) => {
   try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const startIndex = (page - 1) * limit;
+
     const query = {};
     
     if (req.query.customer) query.customer = req.query.customer;
@@ -116,6 +120,7 @@ export const getPayments = async (req, res) => {
       };
     }
 
+    const total = await Payment.countDocuments(query);
     const payments = await Payment.find(query)
       .populate('customer', 'fullName cnic phone')
       .populate('receivedBy', 'name role')
@@ -123,9 +128,18 @@ export const getPayments = async (req, res) => {
         path: 'installment',
         select: 'category brand model'
       })
-      .sort({ paymentDate: -1 });
+      .sort({ paymentDate: -1 })
+      .skip(startIndex)
+      .limit(limit)
+      .lean();
 
-    res.status(200).json({ success: true, count: payments.length, data: payments });
+    res.status(200).json({ 
+      success: true, 
+      count: payments.length, 
+      total,
+      pagination: { page, limit, pages: Math.ceil(total / limit) },
+      data: payments 
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
   }
@@ -372,134 +386,257 @@ export const getMonthlySummary = async (req, res) => {
   }
 };
 
-// @desc    Update a specific schedule entry status (paid / missed)
+// @desc    Update a specific schedule entry status (paid / missed / partially_paid)
 // @route   PATCH /api/payments/schedule/:scheduleId/status
 // @access  Private
 export const updateScheduleStatus = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
   try {
     const { scheduleId } = req.params;
-    const { status, paidAmount, collectedBy, paidDate, note, installmentId } = req.body;
+    const { 
+      status,        // 'paid' | 'missed' | 'partially_paid'
+      paidAmount,    // actual amount received
+      collectedBy,
+      paidDate,
+      note
+    } = req.body;
 
-    if (!['paid', 'missed'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Status must be paid or missed' });
+    // Find installment containing this schedule entry
+    const installment = await Installment.findOne({
+      'paymentSchedule._id': scheduleId
+    }).session(session);
+
+    if (!installment) {
+      await session.abortTransaction();
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Schedule entry not found' 
+      });
     }
 
-    // Find the installment containing this schedule entry
-    const instRecord = installmentId
-      ? await Installment.findById(installmentId)
-      : await Installment.findOne({ 'paymentSchedule._id': scheduleId });
+    // Find the specific schedule entry
+    const scheduleEntry = installment.paymentSchedule.id(scheduleId);
+    const expectedAmount = scheduleEntry.expectedAmount;
+    const actualPaid = Number(paidAmount) || 0;
 
-    if (!instRecord) {
-      return res.status(404).json({ success: false, message: 'Installment not found for this schedule entry' });
-    }
+    // Determine real status based on amounts
+    let realStatus = status;
+    let shortfall = 0;
 
-    const slot = instRecord.paymentSchedule.id(scheduleId);
-    if (!slot) {
-      return res.status(404).json({ success: false, message: 'Schedule entry not found' });
-    }
-
-    const previousStatus = slot.status;
-    slot.status = status;
-    slot.note = note || slot.note;
-
-    if (status === 'paid') {
-      const amount = paidAmount || instRecord.perInstallmentAmount || 0;
-      slot.paidAmount = amount;
-      slot.paidDate = paidDate ? new Date(paidDate) : new Date();
-      if (collectedBy) slot.collectedBy = collectedBy;
-
-      // Update installment financial totals (only if previously wasn't paid)
-      if (previousStatus !== 'paid') {
-        instRecord.totalPaid = (instRecord.totalPaid || 0) + amount;
-        instRecord.remainingAmount = Math.max(0,
-          instRecord.installmentPrice - (instRecord.advanceAmount || 0) - instRecord.totalPaid
-        );
-        instRecord.installmentsPaid = (instRecord.installmentsPaid || 0) + 1;
-
-        // Update installment status
-        if (instRecord.totalInstallments) {
-          const remaining = instRecord.totalInstallments - instRecord.installmentsPaid;
-          if (remaining <= 0) instRecord.status = 'completed';
-          else if (remaining <= 3) instRecord.status = 'near_completion';
-        }
+    if (status === 'paid' || status === 'partially_paid') {
+      if (actualPaid >= expectedAmount) {
+        realStatus = 'paid';
+        shortfall = 0;
+      } else if (actualPaid > 0 && actualPaid < expectedAmount) {
+        realStatus = 'partially_paid';
+        shortfall = expectedAmount - actualPaid;
+        // Add note about shortfall
+        scheduleEntry.note = note || 
+          `Partial payment. Baqaya: Rs. ${shortfall}`;
+      } else {
+        realStatus = 'missed';
+        shortfall = expectedAmount;
       }
-    } else if (status === 'missed') {
-      // If previously paid, reverse the totals
-      if (previousStatus === 'paid') {
-        const reverseAmount = slot.paidAmount || instRecord.perInstallmentAmount || 0;
-        instRecord.totalPaid = Math.max(0, (instRecord.totalPaid || 0) - reverseAmount);
-        instRecord.installmentsPaid = Math.max(0, (instRecord.installmentsPaid || 0) - 1);
-        instRecord.remainingAmount = instRecord.installmentPrice - (instRecord.advanceAmount || 0) - instRecord.totalPaid;
-        instRecord.status = 'active';
-      }
-      slot.paidAmount = undefined;
-      slot.paidDate = undefined;
-      if (collectedBy) slot.collectedBy = collectedBy;
     }
 
-    await instRecord.save();
+    // Update the schedule entry
+    scheduleEntry.status = realStatus;
+    scheduleEntry.paidAmount = actualPaid;
+    scheduleEntry.shortfallAmount = shortfall;
+    scheduleEntry.paidDate = paidDate || new Date();
+    scheduleEntry.collectedBy = collectedBy;
+    if (note) scheduleEntry.note = note;
 
-    res.status(200).json({
-      success: true,
-      data: { scheduleEntry: slot, installment: { _id: instRecord._id, totalPaid: instRecord.totalPaid, remainingAmount: instRecord.remainingAmount } }
+    // Recalculate installment totals
+    const allPaid = installment.paymentSchedule.reduce(
+      (sum, entry) => sum + (entry.paidAmount || 0), 0
+    );
+    installment.totalPaid = allPaid;
+    installment.remainingAmount = 
+      installment.installmentPrice - (installment.advanceAmount || 0) - allPaid;
+
+    // Calculate total baqaya (arrears)
+    const totalArrears = installment.paymentSchedule.reduce(
+      (sum, entry) => sum + (entry.shortfallAmount || 0), 0
+    );
+    installment.totalArrears = totalArrears;
+
+    // Check if fully paid
+    if (installment.remainingAmount <= 0) {
+      installment.status = 'completed';
+    } else if (
+      installment.paymentSchedule.filter(
+        e => e.status === 'pending'
+      ).length <= 3
+    ) {
+      installment.status = 'near_completion';
+    }
+
+    await installment.save({ session });
+
+    // Create Payment record
+    const payment = new Payment({
+      installment: installment._id,
+      customer: installment.customer,
+      scheduleEntryId: scheduleId,
+      amount: actualPaid,
+      expectedAmount: expectedAmount,
+      shortfall: shortfall,
+      status: realStatus,
+      collectedBy,
+      paymentDate: paidDate || new Date(),
+      note,
     });
+    await payment.save({ session });
+
+    await session.commitTransaction();
+
+    res.json({
+      success: true,
+      message: realStatus === 'partially_paid'
+        ? `Partial payment recorded. Baqaya: Rs. ${shortfall}`
+        : `Payment marked as ${realStatus}`,
+      scheduleEntry,
+      totalPaid: installment.totalPaid,
+      remaining: installment.remainingAmount,
+      totalArrears: installment.totalArrears,
+    });
+
   } catch (error) {
-    console.error('[updateScheduleStatus]', error);
-    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    await session.abortTransaction();
+    console.error('Payment update error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Payment update failed',
+      error: error.message 
+    });
+  } finally {
+    session.endSession();
   }
 };
 
-// @desc    Pay custom amount — FIFO across missed/pending entries
-// @route   POST /api/payments/schedule/bulk-pay
-// @access  Private
-export const bulkPaySchedule = async (req, res) => {
-  try {
-    const { installmentId, amount, collectedBy, paidDate, note } = req.body;
-    const instRecord = await Installment.findById(installmentId);
-    if (!instRecord) return res.status(404).json({ success: false, message: 'Installment not found' });
+// @desc    Apply Bulk Custom FIFO Payment
+// @access  Private Helper
+const applyBulkPayment = async (
+  installmentId, 
+  totalAmountReceived, 
+  collectedBy, 
+  session
+) => {
+  const installment = await Installment
+    .findById(installmentId)
+    .session(session);
 
-    let amountLeft = Number(amount);
-    const perQist = instRecord.perInstallmentAmount || 0;
-    const markedEntries = [];
+  if (!installment) throw new Error('Installment not found');
 
-    // Sort schedule by dueDate ascending — FIFO oldest first
-    const sortedSchedule = [...instRecord.paymentSchedule].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-
-    for (const entry of sortedSchedule) {
-      if (amountLeft <= 0) break;
-      const slot = instRecord.paymentSchedule.id(entry._id);
-      if (!slot || slot.status === 'paid') continue;
-
-      const slotAmount = Math.min(amountLeft, perQist);
-      slot.status = 'paid';
-      slot.paidAmount = slotAmount;
-      slot.paidDate = paidDate ? new Date(paidDate) : new Date();
-      if (collectedBy) slot.collectedBy = collectedBy;
-      slot.note = note || '';
-
-      amountLeft -= slotAmount;
-      markedEntries.push(slot._id);
-      instRecord.totalPaid = (instRecord.totalPaid || 0) + slotAmount;
-      instRecord.installmentsPaid = (instRecord.installmentsPaid || 0) + 1;
-    }
-
-    instRecord.remainingAmount = Math.max(0,
-      instRecord.installmentPrice - (instRecord.advanceAmount || 0) - instRecord.totalPaid
+  // Get all missed + pending entries + partially_paid entries, 
+  // sorted oldest first (FIFO)
+  const unpaidEntries = installment.paymentSchedule
+    .filter(e => 
+      e.status === 'missed' || 
+      e.status === 'pending' || 
+      e.status === 'partially_paid'
+    )
+    .sort((a, b) => 
+      new Date(a.dueDate) - new Date(b.dueDate)
     );
 
-    if (instRecord.totalInstallments) {
-      const remaining = instRecord.totalInstallments - instRecord.installmentsPaid;
-      if (remaining <= 0) instRecord.status = 'completed';
-      else if (remaining <= 3) instRecord.status = 'near_completion';
+  let remainingToDistribute = totalAmountReceived;
+  const updatedEntries = [];
+
+  for (const entry of unpaidEntries) {
+    if (remainingToDistribute <= 0) break;
+
+    // How much is still owed on this entry?
+    const alreadyPaid = entry.paidAmount || 0;
+    const stillOwed = entry.expectedAmount - alreadyPaid;
+    let allocatedForThisSlot = 0;
+
+    if (remainingToDistribute >= stillOwed) {
+      // Fully covers this entry
+      allocatedForThisSlot = stillOwed;
+      entry.paidAmount = entry.expectedAmount;
+      entry.shortfallAmount = 0;
+      entry.status = 'paid';
+      entry.paidDate = new Date();
+      entry.collectedBy = collectedBy;
+      remainingToDistribute -= stillOwed;
+    } else {
+      // Partially covers this entry
+      allocatedForThisSlot = remainingToDistribute;
+      entry.paidAmount = alreadyPaid + remainingToDistribute;
+      entry.shortfallAmount = 
+        entry.expectedAmount - entry.paidAmount;
+      entry.status = 'partially_paid';
+      entry.paidDate = new Date();
+      entry.collectedBy = collectedBy;
+      remainingToDistribute = 0;
     }
 
-    await instRecord.save();
+    updatedEntries.push(entry._id);
 
-    res.status(200).json({
+    // Create individual Payment record for audit history
+    const payment = new Payment({
+      installment: installment._id,
+      customer: installment.customer,
+      scheduleEntryId: entry._id,
+      amount: allocatedForThisSlot,
+      expectedAmount: entry.expectedAmount,
+      shortfall: entry.shortfallAmount,
+      status: entry.status,
+      collectedBy,
+      paymentDate: new Date(),
+    });
+    await payment.save({ session });
+  }
+
+  // Recalculate totals
+  installment.totalPaid = installment.paymentSchedule
+    .reduce((sum, e) => sum + (e.paidAmount || 0), 0);
+  
+  installment.remainingAmount = 
+    installment.installmentPrice - (installment.advanceAmount || 0) - installment.totalPaid;
+  
+  installment.totalArrears = installment.paymentSchedule
+    .reduce((sum, e) => sum + (e.shortfallAmount || 0), 0);
+
+  // Update status
+  if (installment.remainingAmount <= 0) {
+    installment.status = 'completed';
+  } else if (installment.paymentSchedule.filter(e => e.status === 'pending').length <= 3) {
+    installment.status = 'near_completion';
+  }
+
+  await installment.save({ session });
+  
+  return {
+    installment,
+    entriesUpdated: updatedEntries.length,
+    remainingUnallocated: remainingToDistribute,
+  };
+};
+
+// @desc    Process a Bulk payment distributed via FIFO
+// @route   POST /api/payments/bulk-payment
+// @access  Private
+export const bulkPayment = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { installmentId, totalAmount, collectedBy } = req.body;
+    const result = await applyBulkPayment(installmentId, Number(totalAmount), collectedBy, session);
+    await session.commitTransaction();
+    res.json({
       success: true,
-      data: { markedEntries, totalApplied: Number(amount) - amountLeft, remainingUnallocated: amountLeft }
+      message: `Bulk payment of Rs. ${totalAmount} processed successfully.`,
+      ...result
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    await session.abortTransaction();
+    res.status(500).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
   }
 };

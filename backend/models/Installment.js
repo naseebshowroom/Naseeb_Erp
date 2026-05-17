@@ -5,21 +5,24 @@ import mongoose from 'mongoose';
 // Each entry represents one due date in the installment plan.
 // ──────────────────────────────────────────────────────────────────────────────
 const paymentScheduleSchema = new mongoose.Schema({
-  dueDate:    { type: Date, required: true },
-  status: { 
-    type: String, 
-    enum: ['pending', 'paid', 'missed'], 
-    default: 'pending' 
+  dueDate: { type: Date, required: true },
+  expectedAmount: { type: Number, required: true },
+  paidAmount: { type: Number, default: 0 },
+  shortfallAmount: { type: Number, default: 0 },
+  status: {
+    type: String,
+    enum: [
+      'pending',
+      'paid',
+      'partially_paid',
+      'missed',
+      'carried_over',
+    ],
+    default: 'pending',
   },
-  paidDate:   { type: Date },
-  paidAmount: { type: Number },
-
-  // Which worker collected this payment
-  collectedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  note: { type: String }
+  paidDate: { type: Date },
+  collectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  note: { type: String },
 }, { _id: true });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -133,6 +136,7 @@ const installmentSchema = new mongoose.Schema({
     default: 'active'
   },
   totalPaid:         { type: Number, default: 0 },
+  totalArrears:      { type: Number, default: 0 },
   installmentsPaid:  { type: Number, default: 0 },
 
   // For rollover: link to the previous installment that was closed
@@ -178,5 +182,13 @@ installmentSchema.pre(/^find/, function(next) {
   this.find({ isDeleted: { $ne: true } });
   next();
 });
+
+// Indexes for high performance lookups
+installmentSchema.index({ customer: 1 });
+installmentSchema.index({ status: 1 });
+installmentSchema.index({ category: 1 });
+installmentSchema.index({ 'paymentSchedule.dueDate': 1 });
+installmentSchema.index({ 'paymentSchedule.status': 1 });
+installmentSchema.index({ createdAt: -1 });
 
 export default mongoose.model('Installment', installmentSchema);

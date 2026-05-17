@@ -48,6 +48,10 @@ export default function DashboardPage() {
   const [stock, setStock] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [calendar, setCalendar] = useState([]);
+  const [analyticalStats, setAnalyticalStats] = useState({
+    statusStats: [],
+    monthlyRecovery: []
+  });
 
   const fetchData = async () => {
     setLoading(true);
@@ -56,20 +60,24 @@ export default function DashboardPage() {
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
 
-      const [statsRes, stockRes, activityRes, calRes] = await Promise.allSettled([
+      const [statsRes, stockRes, activityRes, calRes, recoveryStatsRes] = await Promise.allSettled([
         api.get('/dashboard/stats'),
         api.get('/dashboard/stock-overview'),
         api.get('/dashboard/activity/recent'),
-        api.get(`/dashboard/payments/calendar?month=${currentMonth}&year=${currentYear}`)
+        api.get(`/dashboard/payments/calendar?month=${currentMonth}&year=${currentYear}`),
+        api.get('/installments/stats')
       ]);
 
       if (statsRes.status === 'fulfilled')    setStats(statsRes.value.data.data);
       if (stockRes.status === 'fulfilled')    setStock(stockRes.value.data.data);
       if (activityRes.status === 'fulfilled') setRecentActivity(activityRes.value.data.data);
       if (calRes.status === 'fulfilled')      setCalendar(calRes.value.data.data);
+      if (recoveryStatsRes.status === 'fulfilled') {
+        setAnalyticalStats(recoveryStatsRes.value.data.data || { statusStats: [], monthlyRecovery: [] });
+      }
 
       // Only show error if ALL requests failed
-      const allFailed = [statsRes, stockRes, activityRes, calRes].every(r => r.status === 'rejected');
+      const allFailed = [statsRes, stockRes, activityRes, calRes, recoveryStatsRes].every(r => r.status === 'rejected');
       if (allFailed) setError('Dashboard data load nahi ho saka. Network check karein.');
 
     } catch (err) {
@@ -117,6 +125,119 @@ export default function DashboardPage() {
           icon={Activity}
           colorClass="bg-indigo-100 text-indigo-600"
         />
+      </div>
+
+      {/* ── Analytical Recovery & Status Breakdown ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+        {/* Recovery Expected vs Actual Bar Chart */}
+        <div className="erp-card lg:col-span-2">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-black text-slate-900">📊 Recovery Expected vs Actual (6-Month Trend)</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Qist expected aur wasool shuda raqam ka mawazna</p>
+            </div>
+            <div className="flex gap-3 text-xs font-bold shrink-0">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Expected</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Collected</span>
+            </div>
+          </div>
+          <div className="p-6 h-[280px]">
+            {analyticalStats.monthlyRecovery?.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={analyticalStats.monthlyRecovery} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                    tickFormatter={(v) => `Rs ${v >= 1000 ? (v / 1000) + 'k' : v}`}
+                  />
+                  <Tooltip
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.05)' }}
+                    formatter={(value) => [formatCurrency(value)]}
+                  />
+                  <Bar dataKey="expected" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="collected" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                Recovery trends are loading or not available.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Installment Status Pie Chart */}
+        <div className="erp-card">
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-base font-black text-slate-900">📈 Active Khata Status Breakdown</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Khata status ki tafseel</p>
+          </div>
+          <div className="p-6 flex flex-col justify-between h-[280px]">
+            {analyticalStats.statusStats?.length > 0 ? (
+              <div className="flex items-center justify-between gap-2 h-full">
+                <div className="w-[140px] h-[140px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={analyticalStats.statusStats}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={60}
+                        paddingAngle={4}
+                        dataKey="count"
+                        nameKey="_id"
+                      >
+                        {analyticalStats.statusStats.map((entry, index) => {
+                          const statusColors = {
+                            active: '#3b82f6',
+                            completed: '#10b981',
+                            near_completion: '#8b5cf6',
+                            defaulted: '#ef4444',
+                          }
+                          return <Cell key={`cell-${index}`} fill={statusColors[entry._id] || '#64748b'} />
+                        })}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value} Khatey`]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex-1 space-y-1.5 max-w-[140px] overflow-y-auto">
+                  {analyticalStats.statusStats.map((item) => {
+                    const statusColors = {
+                      active: 'bg-blue-500',
+                      completed: 'bg-emerald-500',
+                      near_completion: 'bg-purple-500',
+                      defaulted: 'bg-red-500',
+                    }
+                    const statusNames = {
+                      active: 'Active (Chalu)',
+                      completed: 'Completed',
+                      near_completion: 'Near Complete',
+                      defaulted: 'Defaulted',
+                    }
+                    return (
+                      <div key={item._id} className="flex justify-between items-center text-xs gap-1">
+                        <span className="flex items-center gap-1.5 overflow-hidden">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${statusColors[item._id] || 'bg-slate-400'}`}></span>
+                          <span className="truncate capitalize text-slate-600 font-medium">{statusNames[item._id] || item._id}</span>
+                        </span>
+                        <span className="font-bold text-slate-800 shrink-0">{item.count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                Status data loading.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">

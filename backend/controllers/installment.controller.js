@@ -1,6 +1,7 @@
 import Installment from '../models/Installment.js';
 import Customer from '../models/Customer.js';
 import Asset from '../models/Asset.js';
+import Payment from '../models/Payment.js';
 import { generatePaymentSchedule } from '../utils/schedule.js';
 
 // @desc    Get all installments
@@ -28,7 +29,8 @@ export const getInstallments = async (req, res) => {
       .populate('customer', 'fullName cnic phone khataNumber')
       .sort({ createdAt: -1 })
       .skip(startIndex)
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -67,6 +69,9 @@ export const getInstallmentById = async (req, res) => {
 // @route   POST /api/installments
 // @access  Private
 export const createInstallment = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     let { customer, distributor, ...rest } = req.body;
 
@@ -75,12 +80,12 @@ export const createInstallment = async (req, res) => {
       // Try to find by CNIC only if provided
       let existingCustomer = null;
       if (customer.cnic) {
-        existingCustomer = await Customer.findOne({ cnic: customer.cnic });
+        existingCustomer = await Customer.findOne({ cnic: customer.cnic }).session(session);
       }
       if (existingCustomer) {
         customer = existingCustomer._id;
       } else {
-        const newCustomer = await Customer.create({
+        const newCustomers = await Customer.create([{
           fullName:    customer.fullName,
           fatherName:  customer.fatherName,
           ...(customer.cnic ? { cnic: customer.cnic } : {}),
@@ -88,16 +93,18 @@ export const createInstallment = async (req, res) => {
           city:        customer.city,
           address:     customer.address,
           khataNumber: customer.khataNumber,
-          guarantors:  [],
+          guarantors:  customer.guarantors || [],
           createdBy:   req.user.id,
-        });
-        customer = newCustomer._id;
+        }], { session });
+        customer = newCustomers[0]._id;
       }
     }
 
     // Verify customer exists
-    const customerExists = await Customer.findById(customer);
+    const customerExists = await Customer.findById(customer).session(session);
     if (!customerExists) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ success: false, message: 'Gahak nahi mila' });
     }
 
@@ -105,9 +112,18 @@ export const createInstallment = async (req, res) => {
 
     // Generate Payment Schedule only if NOT a cash sale and totalInstallments is provided
     let paymentSchedule = [];
-    const { totalInstallments, scheduleType, startDate, isCashSale } = rest;
+    const { totalInstallments, scheduleType, startDate, isCashSale, perInstallmentAmount } = rest;
     if (!isCashSale && totalInstallments && scheduleType && startDate) {
       paymentSchedule = generatePaymentSchedule(startDate, totalInstallments, scheduleType);
+      
+      // Inject expectedAmount for each paymentSchedule slot
+      paymentSchedule = paymentSchedule.map(entry => ({
+        dueDate: entry.dueDate,
+        status: 'pending',
+        expectedAmount: Number(perInstallmentAmount) || 0,
+        paidAmount: 0,
+        shortfallAmount: Number(perInstallmentAmount) || 0,
+      }));
     }
 
     const installmentData = {
@@ -118,7 +134,8 @@ export const createInstallment = async (req, res) => {
       ...(isValidObjectId(distributor) ? { distributor } : {}),
     };
 
-    const installment = await Installment.create(installmentData);
+    const installments = await Installment.create([installmentData], { session });
+    const installment = installments[0];
 
     // Auto-link to Asset if chassisNumber or engineNumber provided (and not cash sale)
     if (!isCashSale && (rest.chassisNumber || rest.engineNumber) && rest.assetId) {
@@ -137,11 +154,16 @@ export const createInstallment = async (req, res) => {
         currentStatus: 'on-installment',
         'currentHolder.holderType': 'customer',
         'currentHolder.customerId': customer
-      });
+      }, { session });
     }
 
+    await session.commitTransaction();
+    session.endSession();
     res.status(201).json({ success: true, data: installment });
+
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error('[createInstallment]', error);
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(e => e.message);
@@ -406,36 +428,55 @@ export const getDueToday = async (req, res) => {
 // @route   POST /api/installments/rollover
 // @access  Private
 export const rolloverInstallment = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { oldInstallmentId, newInstallmentData } = req.body;
 
-    const oldInstallment = await Installment.findById(oldInstallmentId);
+    const oldInstallment = await Installment.findById(oldInstallmentId).session(session);
     if (!oldInstallment) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({ success: false, message: 'Old installment not found' });
     }
 
     // Close the old installment
     oldInstallment.status = 'closed-rollover';
-    await oldInstallment.save();
+    await oldInstallment.save({ session });
 
     // Create the new installment with link to old
     let { customer, distributor, ...rest } = newInstallmentData;
     const isValidObjectId = (v) => v && /^[a-f\d]{24}$/i.test(String(v));
 
     let paymentSchedule = [];
-    const { totalInstallments, scheduleType, startDate, isCashSale } = rest;
+    const { totalInstallments, scheduleType, startDate, isCashSale, perInstallmentAmount } = rest;
     if (!isCashSale && totalInstallments && scheduleType && startDate) {
       paymentSchedule = generatePaymentSchedule(startDate, totalInstallments, scheduleType);
+      
+      // Inject expectedAmount for each paymentSchedule qist/slot
+      paymentSchedule = paymentSchedule.map(entry => ({
+        dueDate: entry.dueDate,
+        status: 'pending',
+        expectedAmount: Number(perInstallmentAmount) || 0,
+        paidAmount: 0,
+        shortfallAmount: Number(perInstallmentAmount) || 0,
+      }));
     }
 
-    const newInstallment = await Installment.create({
+    const newInstallments = await Installment.create([{
       ...rest,
       customer: customer._id || customer,
       previousInstallmentId: oldInstallmentId,
       paymentSchedule,
       createdBy: req.user.id,
       ...(isValidObjectId(distributor) ? { distributor } : {}),
-    });
+    }], { session });
+
+    const newInstallment = newInstallments[0];
+
+    await session.commitTransaction();
+    session.endSession();
 
     res.status(201).json({
       success: true,
@@ -443,6 +484,8 @@ export const rolloverInstallment = async (req, res) => {
       data: { oldInstallmentId, newInstallment }
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error('[rolloverInstallment]', error);
     res.status(400).json({ success: false, message: 'Rollover failed', error: error.message });
   }
@@ -519,4 +562,111 @@ export const updateInstallmentStatusAfterPayment = async (installmentId) => {
   }
 
   await installment.save();
+};
+
+// @desc    Get dashboard metrics & chart data (expected vs collected)
+// @route   GET /api/installments/stats
+// @access  Private (Owner/Manager)
+export const getInstallmentStats = async (req, res) => {
+  try {
+    // Status breakdown for pie chart
+    const statusBreakdown = await Installment.aggregate([
+      { $match: { isDeleted: { $ne: true } } },
+      { 
+        $group: { 
+          _id: '$status', 
+          count: { $sum: 1 },
+          totalValue: { $sum: '$installmentPrice' }
+        } 
+      }
+    ]);
+
+    // Monthly recovery for bar chart (last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const monthlyRecovery = await Payment.aggregate([
+      { 
+        $match: { 
+          paymentDate: { $gte: sixMonthsAgo },
+          status: 'paid'
+        } 
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$paymentDate' },
+            month: { $month: '$paymentDate' }
+          },
+          totalCollected: { $sum: '$amount' }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    // Expected per month from active installments
+    const monthlyExpected = await Installment.aggregate([
+      { $match: { status: 'active', isDeleted: { $ne: true } } },
+      { $unwind: '$paymentSchedule' },
+      {
+        $match: {
+          'paymentSchedule.dueDate': { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$paymentSchedule.dueDate' },
+            month: { $month: '$paymentSchedule.dueDate' }
+          },
+          totalExpected: { 
+            $sum: '$paymentSchedule.expectedAmount' 
+          }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    // Format month names for chart labels
+    const monthNames = [
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+
+    const chartData = monthlyRecovery.map(item => ({
+      month: monthNames[item._id.month - 1],
+      year: item._id.year,
+      collected: item.totalCollected,
+      expected: monthlyExpected.find(
+        e => e._id.month === item._id.month && 
+             e._id.year === item._id.year
+      )?.totalExpected || 0,
+    }));
+
+    // If chartData is empty, populate with some empty bounds so dashboard renders beautifully
+    if (chartData.length === 0) {
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        chartData.push({
+          month: monthNames[d.getMonth()],
+          year: d.getFullYear(),
+          collected: 0,
+          expected: 0
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      statusBreakdown,
+      chartData,
+    });
+
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
 };

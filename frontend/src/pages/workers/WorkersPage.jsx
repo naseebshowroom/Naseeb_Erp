@@ -8,6 +8,9 @@ import { useForm } from 'react-hook-form'
 import api from '@/lib/axios'
 import Pagination, { usePagination } from '@/components/ui/Pagination'
 import PageWrapper from '@/components/ui/PageWrapper'
+import ConfirmModal from '@/components/ui/ConfirmModal'
+import toast from 'react-hot-toast'
+import { handleApiError } from '@/utils/errorHandler'
 
 const INPUT = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400'
 
@@ -16,6 +19,8 @@ export default function WorkersPage() {
   const [addModalOpen, setAddModalOpen]     = useState(false)
   const [isSubmitting, setIsSubmitting]     = useState(false)
   const [search, setSearch]                 = useState('')
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [workerToDelete, setWorkerToDelete] = useState(null)
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm()
   const [editWorker, setEditWorker]         = useState(null)   // worker being edited
@@ -79,16 +84,23 @@ export default function WorkersPage() {
   }
 
   // ── Delete Worker ─────────────────────────────────────────────
-  const handleDeleteWorker = async (w) => {
-    const displayName = w.fullName || w.name || w.username
-    const confirmed = window.confirm(`Kya aap "${displayName}" ka account hamesha ke liye delete karna chahte hain?\n\nYeh action wapas nahi ho sakta.`)
-    if (!confirmed) return
+  const handleDeleteWorker = (w) => {
+    setWorkerToDelete(w)
+    setDeleteConfirmOpen(true)
+  }
+
+  const confirmDeleteWorker = async () => {
+    if (!workerToDelete) return
+    const displayName = workerToDelete.fullName || workerToDelete.name || workerToDelete.username
     try {
-      await api.delete(`/auth/users/${w._id}`)
+      await api.delete(`/auth/users/${workerToDelete._id}`)
       toast.success(`${displayName} ka account delete ho gaya.`)
       fetchWorkers()
     } catch (err) {
       handleApiError(err)
+    } finally {
+      setDeleteConfirmOpen(false)
+      setWorkerToDelete(null)
     }
   }
 
@@ -332,6 +344,14 @@ export default function WorkersPage() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        title="Delete Worker Account"
+        message={`Kya aap waqai is worker ka account delete karna chahte hain? (Are you sure you want to delete this worker account?) This action cannot be undone.`}
+        confirmLabel="Delete Account"
+        onConfirm={confirmDeleteWorker}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </PageWrapper>
   )
 }

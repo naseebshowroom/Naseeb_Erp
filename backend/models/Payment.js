@@ -15,12 +15,26 @@ const paymentSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  expectedAmount: {
+    type: Number
+  },
+  shortfall: {
+    type: Number,
+    default: 0
+  },
+  status: {
+    type: String
+  },
   paymentMode: {
     type: String,
     enum: ['cash', 'bank', 'other'],
     default: 'cash'
   },
   receivedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  collectedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
@@ -77,5 +91,10 @@ paymentSchema.pre('save', async function(next) {
     next(error);
   }
 });
+
+// Indexes for super fast payment query lookups
+paymentSchema.index({ installment: 1 });
+paymentSchema.index({ collectedBy: 1 });
+paymentSchema.index({ paymentDate: -1 });
 
 export default mongoose.model('Payment', paymentSchema);

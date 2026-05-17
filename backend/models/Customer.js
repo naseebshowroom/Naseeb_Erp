@@ -1,32 +1,28 @@
 import mongoose from 'mongoose';
 
 const guarantorSchema = new mongoose.Schema({
-  type: {
-    type: String,
-    enum: ['business', 'government'],
-    required: true
-  },
   fullName: { type: String, required: true },
-  cnic: { 
-    type: String, 
-    required: true,
-    match: [/^[0-9]{5}-[0-9]{7}-[0-9]{1}$/, 'Invalid CNIC format']
+  fatherName: { type: String },
+  cnic: { type: String },
+  phone: { type: String, required: true },
+  address: { type: String },
+  relation: { 
+    type: String,
+    enum: [
+      'Brother', 'Father', 'Son', 
+      'Friend', 'Colleague', 
+      'Government Employee', 
+      'Business Owner', 'Other'
+    ]
   },
-  phone: { 
-    type: String, 
-    required: true,
-    match: [/^03[0-9]{2}-[0-9]{7}$/, 'Invalid Phone format']
-  },
-  address: { type: String, required: true },
-  
-  // Business Specific
-  businessName: { type: String },
-  businessType: { type: String },
-  
+  profession: { type: String },
   // Government Specific
   department: { type: String },
   designation: { type: String },
-  employeeId: { type: String }
+  employeeId: { type: String },
+  // Business Specific
+  businessName: { type: String },
+  businessType: { type: String },
 }, { _id: false });
 
 const customerSchema = new mongoose.Schema({
@@ -79,5 +75,10 @@ customerSchema.pre(/^find/, function(next) {
   this.find({ isDeleted: { $ne: true } });
   next();
 });
+
+// Indexes for super fast search and phone matches
+customerSchema.index({ fullName: 'text' });
+customerSchema.index({ phone: 1 });
+customerSchema.index({ cnic: 1 }, { sparse: true, unique: true });
 
 export default mongoose.model('Customer', customerSchema);

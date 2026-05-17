@@ -11,6 +11,8 @@ import distributorService from '@/services/distributorService'
 import { handleApiError } from '@/utils/errorHandler'
 import toast from 'react-hot-toast'
 import { useForm, useFieldArray } from 'react-hook-form'
+import api from '@/lib/axios'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 
 const INPUT = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-black transition-colors';
 
@@ -37,6 +39,9 @@ export default function DistributorDetail() {
     color: '', dateSupplied: new Date().toISOString().split('T')[0],
     unitPrice: '', quantity: 1
   })
+
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState(null)
 
   const { register, control, handleSubmit, reset } = useForm({
     defaultValues: {
@@ -125,14 +130,22 @@ export default function DistributorDetail() {
     }
   }
 
-  const handleDeleteItem = async (itemId) => {
-    if (!window.confirm('Kya aap waqai is item ko remove karna chahte hain?')) return
+  const handleDeleteItem = (itemId) => {
+    setItemToDelete(itemId)
+    setDeleteConfirmOpen(true)
+  }
+
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete) return
     try {
-      await api.delete(`/distributors/${id}/items/${itemId}`)
+      await api.delete(`/distributors/${id}/items/${itemToDelete}`)
       toast.success('Item remove ho gaya!')
       fetchDetail()
     } catch (err) {
       handleApiError(err)
+    } finally {
+      setDeleteConfirmOpen(false)
+      setItemToDelete(null)
     }
   }
 
@@ -554,6 +567,7 @@ export default function DistributorDetail() {
             </form>
           </div>
         </div>
+      )}
       {/* ── Granular Item Modal ── */}
       {itemModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -683,6 +697,14 @@ export default function DistributorDetail() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        title="Remove Supplied Item"
+        message="Kya aap waqai is item ko remove karna chahte hain? (Are you sure you want to remove this item?)"
+        confirmLabel="Remove Karein"
+        onConfirm={confirmDeleteItem}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </PageWrapper>
   )
 }

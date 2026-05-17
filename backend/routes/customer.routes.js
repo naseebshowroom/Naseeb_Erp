@@ -10,7 +10,7 @@ import {
   searchCustomers,
   getOverdueCustomers
 } from '../controllers/customer.controller.js';
-import { protect, authorize } from '../middleware/auth.middleware.js';
+import { protect, authorizeRoles } from '../middleware/auth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
 
 const router = express.Router();
@@ -27,7 +27,7 @@ const validateRequest = (req, res, next) => {
 const customerValidationRules = [
   body('fullName').notEmpty().withMessage('Full name is required'),
   body('fatherName').notEmpty().withMessage('Father name is required'),
-  body('cnic').matches(/^[0-9]{5}-[0-9]{7}-[0-9]{1}$/).withMessage('Valid CNIC format required: 00000-0000000-0'),
+  body('cnic').optional({ checkFalsy: true }).matches(/^[0-9]{5}-[0-9]{7}-[0-9]{1}$/).withMessage('Valid CNIC format required: 00000-0000000-0'),
   body('phone').matches(/^03[0-9]{2}-[0-9]{7}$/).withMessage('Valid Phone format required: 0300-0000000'),
   body('address').notEmpty().withMessage('Address is required'),
   body('city').notEmpty().withMessage('City is required')
@@ -45,7 +45,7 @@ router.use(protect);
 
 router.route('/')
   .get(getCustomers)
-  .post(uploadFields, customerValidationRules, validateRequest, createCustomer);
+  .post(authorizeRoles('owner', 'manager'), uploadFields, customerValidationRules, validateRequest, createCustomer);
 
 router.get('/search', searchCustomers);
 router.get('/overdue', getOverdueCustomers);
@@ -57,13 +57,14 @@ router.route('/:id')
     getCustomerById
   )
   .put(
+    authorizeRoles('owner', 'manager'),
     param('id').isMongoId().withMessage('Invalid customer ID'),
     uploadFields,
-    validateRequest, // Partial validation could be applied here
+    validateRequest,
     updateCustomer
   )
   .delete(
-    authorize('owner', 'manager'),
+    authorizeRoles('owner'),
     param('id').isMongoId().withMessage('Invalid customer ID'),
     validateRequest,
     deleteCustomer

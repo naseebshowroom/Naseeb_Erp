@@ -89,21 +89,21 @@ export const getCustomers = async (req, res) => {
 // @access  Private
 export const getCustomerById = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const customer = await Customer.findById(req.params.id).lean();
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Gahak nahi mila' });
     }
 
     // Fetch associated data
     const [installments, payments] = await Promise.all([
-      mongoose.model('Installment').find({ customer: customer._id, isDeleted: false }),
-      mongoose.model('Payment').find({ customer: customer._id }).populate('installment').sort({ paymentDate: -1 })
+      mongoose.model('Installment').find({ customer: customer._id, isDeleted: false }).lean(),
+      mongoose.model('Payment').find({ customer: customer._id }).populate('installment').sort({ paymentDate: -1 }).lean()
     ]);
 
     res.status(200).json({ 
       success: true, 
       data: {
-        ...customer._doc,
+        ...customer,
         installments,
         payments
       } 

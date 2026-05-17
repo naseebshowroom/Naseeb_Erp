@@ -90,13 +90,20 @@ app.use('/api', limiter);
 // Render pings this to verify the service is alive. Keep it lightweight.
 app.get('/api/health', (req, res) => {
   const dbState = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  const memoryUsage = process.memoryUsage();
   res.status(200).json({
     success: true,
     status: 'healthy',
     environment: process.env.NODE_ENV,
     database: dbState[mongoose.connection.readyState] || 'unknown',
-    timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()) + 's',
+    memory: {
+      rss: Math.round(memoryUsage.rss / 1024 / 1024) + ' MB',
+      heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024) + ' MB',
+      heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024) + ' MB',
+      external: Math.round(memoryUsage.external / 1024 / 1024) + ' MB'
+    },
+    timestamp: new Date().toISOString(),
   });
 });
 

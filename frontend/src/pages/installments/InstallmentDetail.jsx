@@ -264,11 +264,32 @@ export default function InstallmentDetail() {
   }
 
   const handleSlotStatus = async (slotId, status) => {
+    // 1. Save state for rollback
+    const previousLedger = ledger ? { ...ledger } : null;
+
+    // 2. Perform optimistic state update
+    if (ledger && ledger.schedule) {
+      const updatedSchedule = ledger.schedule.map(slot => {
+        if (slot._id === slotId) {
+          return { ...slot, status };
+        }
+        return slot;
+      });
+      setLedger(prev => ({ ...prev, schedule: updatedSchedule }));
+    }
+
     try {
-      await api.patch(`/payments/schedule/${slotId}/status`, { status, installmentId: id })
-      toast.success(`Slot ${status === 'paid' ? '✅ Paid' : '❌ Missed'} mark ho gaya!`)
-      loadLedger(); loadData()
-    } catch (e) { toast.error(e.response?.data?.message || 'Error') }
+      // 3. Perform background API call
+      await api.patch(`/payments/schedule/${slotId}/status`, { status, installmentId: id });
+      toast.success(`Slot ${status === 'paid' ? '✅ Paid' : '❌ Missed'} mark ho gaya!`);
+      // 4. Background refetch to ensure exact sync
+      loadLedger();
+      loadData();
+    } catch (e) {
+      // 5. Rollback on failure
+      if (previousLedger) setLedger(previousLedger);
+      toast.error(e.response?.data?.message || 'Error');
+    }
   }
 
   const printStatement = async () => {

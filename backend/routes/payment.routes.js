@@ -9,9 +9,9 @@ import {
   getDailySummary,
   getMonthlySummary,
   updateScheduleStatus,
-  bulkPaySchedule,
+  bulkPayment,
 } from '../controllers/payment.controller.js';
-import { protect, authorize } from '../middleware/auth.middleware.js';
+import { protect, authorizeRoles } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -33,16 +33,14 @@ const paymentRules = [
 router.use(protect);
 
 router.get('/collected-today', getCollectedToday);
-router.get('/summary/daily', getSummaryDaily);
+router.get('/summary/daily', getDailySummary);
 router.get('/summary/monthly', getMonthlySummary);
 
-function getSummaryDaily(req, res) {
-  return getDailySummary(req, res);
-}
-
-// Schedule-specific routes — must come before /:id
+// Workers can mark payments
 router.patch('/schedule/:scheduleId/status', updateScheduleStatus);
-router.post('/schedule/bulk-pay', bulkPaySchedule);
+
+// Bulk payment distributed via FIFO
+router.post('/bulk-payment', bulkPayment);
 
 router.route('/')
   .get(getPayments)
@@ -57,7 +55,7 @@ router.route('/receipt/:id')
 
 router.route('/:id')
   .delete(
-    authorize('owner'),
+    authorizeRoles('owner'),
     param('id').isMongoId().withMessage('Invalid payment ID'),
     validateRequest,
     deletePayment

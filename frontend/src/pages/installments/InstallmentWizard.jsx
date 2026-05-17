@@ -16,6 +16,10 @@ const INIT = {
   // Customer
   fullName: '', fatherName: '', cnic: '', phone: '', city: '', address: '',
   khataNumber: '', investorName: 'Owner',
+  // Guarantor 1
+  g1_name: '', g1_fatherName: '', g1_phone: '', g1_cnic: '', g1_relation: '', g1_relationUrdu: '', g1_workDepartment: '', g1_businessAddress: '',
+  // Guarantor 2
+  g2_name: '', g2_fatherName: '', g2_phone: '', g2_cnic: '', g2_relation: '', g2_relationUrdu: '', g2_workDepartment: '', g2_businessAddress: '',
   // Product
   category: 'motorcycle', customCategory: '', brand: '', model: '', color: '',
   engineNumber: '', chassisNumber: '', serialNumber: '', condition: 'new',
@@ -38,7 +42,8 @@ export default function InstallmentWizard() {
   const [form, setForm]         = useState(INIT)
   const [saving, setSaving]     = useState(false)
   const [distributors, setDistributors] = useState([])
-
+  const [activeGuarantorAccordion, setActiveGuarantorAccordion] = useState(null) // 'g1', 'g2', or null
+  
   // Chassis detection state
   const [chassisSearch, setChassisSearch] = useState({ loading: false, found: null, conflict: false })
   const chassisTimer = useRef(null)
@@ -100,6 +105,28 @@ export default function InstallmentWizard() {
           ...(form.cnic ? { cnic: form.cnic } : {}),
           phone: form.phone, city: form.city, address: form.address,
           khataNumber: form.khataNumber,
+          guarantors: [
+            {
+              name: form.g1_name,
+              fatherName: form.g1_fatherName,
+              phone: form.g1_phone,
+              cnic: form.g1_cnic,
+              relation: form.g1_relation,
+              relationUrdu: form.g1_relationUrdu,
+              workDepartment: form.g1_workDepartment,
+              businessAddress: form.g1_businessAddress
+            },
+            {
+              name: form.g2_name,
+              fatherName: form.g2_fatherName,
+              phone: form.g2_phone,
+              cnic: form.g2_cnic,
+              relation: form.g2_relation,
+              relationUrdu: form.g2_relationUrdu,
+              workDepartment: form.g2_workDepartment,
+              businessAddress: form.g2_businessAddress
+            }
+          ].filter(g => g.name && g.phone)
         },
         khataNumber:      form.khataNumber,
         investorName:     form.investorName,
@@ -156,7 +183,10 @@ export default function InstallmentWizard() {
 
   // ── Step 0: Customer ─────────────────────────────────────────────────────────
   const StepCustomer = () => (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <div className="border-b border-slate-100 pb-4 mb-4">
+        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Customer Details / Grahak ki Maaloomat</h3>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Full Name (Poora Naam)" field="fullName" required placeholder="e.g. Muhammad Ali" />
         <Input label="Father's Name (Walid ka Naam)" field="fatherName" required placeholder="e.g. Muhammad Hussain" />
@@ -167,6 +197,72 @@ export default function InstallmentWizard() {
       </div>
       <Input label="Address (Ghar ka Pata)" field="address" required placeholder="Full address" />
       <Select label="Investor / Capital (Sarmaaya Kisne Lagaya)" field="investorName" options={INVESTOR_OPTIONS} />
+
+      {/* Guarantors Accordion Section */}
+      <div className="mt-8 space-y-4 pt-6 border-t border-slate-100">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Guarantors / Zamin (Optional)</h3>
+          <p className="text-xs text-slate-500">Provide details for up to two guarantors to print on the agreement</p>
+        </div>
+
+        {/* Guarantor 1 */}
+        <div className="border border-slate-200 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveGuarantorAccordion(activeGuarantorAccordion === 'g1' ? null : 'g1')}
+            className={`w-full px-5 py-4 flex items-center justify-between text-left font-bold text-sm ${activeGuarantorAccordion === 'g1' ? 'bg-blue-50/50 text-blue-700 border-b border-slate-100' : 'bg-slate-50/50 text-slate-700 hover:bg-slate-50'}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${form.g1_name && form.g1_phone ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+              <span>Guarantor 1 / Pehla Zamin (Zamin Awwal)</span>
+            </div>
+            <span className="text-xs text-slate-400 font-normal">{activeGuarantorAccordion === 'g1' ? 'Collapse ▲' : 'Expand ▼'}</span>
+          </button>
+          {activeGuarantorAccordion === 'g1' && (
+            <div className="p-5 bg-white space-y-4 animate-fadeIn">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Name (Naam)" field="g1_name" placeholder="Name of Guarantor 1" />
+                <Input label="Father's Name (Walid ka Naam)" field="g1_fatherName" placeholder="Father name" />
+                <Input label="CNIC (Optional)" field="g1_cnic" placeholder="XXXXX-XXXXXXX-X" />
+                <Input label="Phone (Mobile)" field="g1_phone" placeholder="0300-1234567" />
+                <Input label="Relation (Rishta)" field="g1_relation" placeholder="e.g. Brother, Friend" />
+                <Input label="Relation in Urdu (Rishta Urdu)" field="g1_relationUrdu" placeholder="e.g. بھائی, دوست" />
+                <Input label="Work Department / Job (Mulazmat)" field="g1_workDepartment" placeholder="e.g. Police, Education, Business" />
+              </div>
+              <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g1_businessAddress" placeholder="Full shop or business address" />
+            </div>
+          )}
+        </div>
+
+        {/* Guarantor 2 */}
+        <div className="border border-slate-200 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveGuarantorAccordion(activeGuarantorAccordion === 'g2' ? null : 'g2')}
+            className={`w-full px-5 py-4 flex items-center justify-between text-left font-bold text-sm ${activeGuarantorAccordion === 'g2' ? 'bg-blue-50/50 text-blue-700 border-b border-slate-100' : 'bg-slate-50/50 text-slate-700 hover:bg-slate-50'}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${form.g2_name && form.g2_phone ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+              <span>Guarantor 2 / Doosra Zamin (Zamin Doam)</span>
+            </div>
+            <span className="text-xs text-slate-400 font-normal">{activeGuarantorAccordion === 'g2' ? 'Collapse ▲' : 'Expand ▼'}</span>
+          </button>
+          {activeGuarantorAccordion === 'g2' && (
+            <div className="p-5 bg-white space-y-4 animate-fadeIn">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Name (Naam)" field="g2_name" placeholder="Name of Guarantor 2" />
+                <Input label="Father's Name (Walid ka Naam)" field="g2_fatherName" placeholder="Father name" />
+                <Input label="CNIC (Optional)" field="g2_cnic" placeholder="XXXXX-XXXXXXX-X" />
+                <Input label="Phone (Mobile)" field="g2_phone" placeholder="0300-1234567" />
+                <Input label="Relation (Rishta)" field="g2_relation" placeholder="e.g. Brother, Friend" />
+                <Input label="Relation in Urdu (Rishta Urdu)" field="g2_relationUrdu" placeholder="e.g. بھائی, دوست" />
+                <Input label="Work Department / Job (Mulazmat)" field="g2_workDepartment" placeholder="e.g. Police, Education, Business" />
+              </div>
+              <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g2_businessAddress" placeholder="Full shop or business address" />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 
@@ -345,6 +441,8 @@ export default function InstallmentWizard() {
       ] : []),
       ['Asset Status', form.assetStatus],
       ...(form.assetId ? [['Asset Linked', '✅ Existing asset record']] : []),
+      ...(form.g1_name ? [['Zamin Awwal (1)', `${form.g1_name} (${form.g1_phone})`]] : []),
+      ...(form.g2_name ? [['Zamin Doam (2)', `${form.g2_name} (${form.g2_phone})`]] : []),
     ]
     return (
       <div className="space-y-4">

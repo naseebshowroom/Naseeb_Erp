@@ -14,7 +14,7 @@ export const getDistributors = async (req, res) => {
       ];
     }
 
-    const distributors = await Distributor.find(query).sort({ createdAt: -1 });
+    const distributors = await Distributor.find(query).sort({ createdAt: -1 }).lean();
 
     // For each distributor, attach their current outstanding balance
     const enriched = await Promise.all(distributors.map(async (d) => {
@@ -24,7 +24,7 @@ export const getDistributors = async (req, res) => {
       ]);
       const fin = outstanding[0] || { totalBalance: 0, totalSupplied: 0, totalPaid: 0 };
       return {
-        ...d.toObject(),
+        ...d,
         balance:        fin.totalBalance,
         totalSupplied:  fin.totalSupplied,
         totalPaid:      fin.totalPaid,
@@ -54,10 +54,10 @@ export const getDistributorStats = async (req, res) => {
 // ─── GET ONE ─────────────────────────────────────────────────
 export const getDistributorById = async (req, res) => {
   try {
-    const distributor = await Distributor.findById(req.params.id);
+    const distributor = await Distributor.findById(req.params.id).lean();
     if (!distributor) return res.status(404).json({ success: false, message: 'Distributor not found' });
 
-    const outstandings = await DistributorOutstanding.find({ distributor: req.params.id }).sort({ createdAt: -1 });
+    const outstandings = await DistributorOutstanding.find({ distributor: req.params.id }).sort({ createdAt: -1 }).lean();
 
     const totals = outstandings.reduce((acc, o) => ({
       totalSupplied: acc.totalSupplied + o.totalAmount,
@@ -78,7 +78,7 @@ export const getDistributorById = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        ...distributor.toObject(),
+        ...distributor,
         financials:     totals,
         supplyHistory:  outstandings,
         paymentHistory,
@@ -231,5 +231,16 @@ export const deleteSuppliedItem = async (req, res) => {
     res.status(200).json({ success: true, message: 'Item removed' });
   } catch (error) {
     res.status(400).json({ success: false, message: 'Error deleting item', error: error.message });
+  }
+};
+
+// ─── DELETE DISTRIBUTOR ──────────────────────────────────────────
+export const deleteDistributor = async (req, res) => {
+  try {
+    const distributor = await Distributor.findByIdAndDelete(req.params.id);
+    if (!distributor) return res.status(404).json({ success: false, message: 'Distributor not found' });
+    res.status(200).json({ success: true, message: 'Distributor deleted successfully' });
+  } catch (error) {
+    res.status(400).json({ success: false, message: 'Error deleting distributor', error: error.message });
   }
 };

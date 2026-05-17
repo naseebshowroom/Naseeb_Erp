@@ -1,58 +1,33 @@
 import puppeteer from 'puppeteer';
 
-let browserInstance = null;
-let isGenerating = false;
-
 const getBrowser = async () => {
-  if (browserInstance && browserInstance.connected) return browserInstance;
-
-  console.log('[PDF] Launching Chromium...');
-  browserInstance = await puppeteer.launch({
+  const isProd = process.env.NODE_ENV === 'production';
+  
+  return await puppeteer.launch({
     headless: 'new',
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
+    executablePath: isProd
+      ? process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
+      : puppeteer.executablePath(),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu',
+      '--disable-accelerated-2d-canvas',
       '--no-first-run',
-      ...(process.env.PUPPETEER_EXECUTABLE_PATH
-        ? ['--single-process', '--no-zygote']
-        : []),
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu',
     ],
+    timeout: 30000,
   });
-
-  browserInstance.on('disconnected', () => {
-    console.log('[PDF] Browser disconnected — will relaunch on next request.');
-    browserInstance = null;
-  });
-
-  console.log('[PDF] Chromium ready.');
-  return browserInstance;
 };
 
-/**
- * Generates a PDF from an HTML string using a shared Puppeteer browser.
- * Queues concurrent requests to prevent Chromium crashes.
- * @param {string} htmlContent  — body HTML (from documentTemplates.js)
- * @returns {Buffer}            — raw PDF bytes
- */
 const generatePDF = async (htmlContent) => {
-  // Simple mutex — queue if already generating
-  let waited = 0;
-  while (isGenerating) {
-    if (waited > 30_000) throw new Error('PDF queue timeout — server too busy');
-    await new Promise(r => setTimeout(r, 500));
-    waited += 500;
-  }
-
-  isGenerating = true;
-  let page = null;
-
+  let browser = null;
   try {
-    const browser = await getBrowser();
-    page = await browser.newPage();
-
+    browser = await getBrowser();
+    const page = await browser.newPage();
+    
     const fullHTML = `<!DOCTYPE html>
 <html lang="ur" dir="rtl">
 <head>
@@ -69,26 +44,36 @@ const generatePDF = async (htmlContent) => {
 <body>${htmlContent}</body>
 </html>`;
 
-    await page.setContent(fullHTML, { waitUntil: 'networkidle0' });
-    await new Promise(r => setTimeout(r, 1500)); // let Urdu font settle
+    await page.setContent(fullHTML, {
+      waitUntil: 'networkidle0',
+      timeout: 30000,
+    });
+
+    // Wait extra for Urdu font (Noto Nastaliq loads slowly)
+    await new Promise(r => setTimeout(r, 1500));
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '15mm', bottom: '15mm', left: '18mm', right: '18mm' },
       displayHeaderFooter: false,
+      margin: {
+        top: '15mm',
+        bottom: '15mm',
+        left: '18mm',
+        right: '18mm',
+      },
     });
 
-    console.log(`[PDF] Done — ${Math.round(pdfBuffer.length / 1024)} KB`);
     return pdfBuffer;
 
-  } catch (err) {
-    console.error('[PDF] Error:', err.message);
-    browserInstance = null; // force relaunch next time
-    throw err;
+  } catch (error) {
+    console.error('PDF generation failed:', error);
+    throw new Error(`PDF generation failed: ${error.message}`);
   } finally {
-    if (page && !page.isClosed()) await page.close().catch(() => {});
-    isGenerating = false;
+    // ALWAYS close browser even if error occurs
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
   }
 };
 
