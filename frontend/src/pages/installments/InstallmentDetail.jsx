@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { 
   Package, Calendar, Wallet, CheckCircle2, 
-  Clock, Edit, FileText, X, User, DollarSign
+  Clock, Edit, FileText, X, User, DollarSign, BookOpen, Printer, ExternalLink
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import PageWrapper from '@/components/ui/PageWrapper'
@@ -13,6 +13,7 @@ import paymentService from '@/services/paymentService'
 import { handleApiError } from '@/utils/errorHandler'
 import DocumentModal from '@/components/documents/DocumentModal'
 import { useAuthStore } from '@/store/authStore'
+import api from '@/lib/axios'
 
 // ── Payment Modal ──────────────────────────────────────────────
 function VasooliModal({ installment, onClose, onSuccess }) {
@@ -219,6 +220,12 @@ export default function InstallmentDetail() {
   const [isLoading, setIsLoading]     = useState(true)
   const [agreementOpen, setAgreementOpen] = useState(false)
   const [vasooliOpen, setVasooliOpen] = useState(false)
+  const [activeTab, setActiveTab]     = useState('overview') // 'overview' | 'khata'
+  const [ledger, setLedger]           = useState(null)
+  const [ledgerLoading, setLedgerLoading] = useState(false)
+  const [bulkPayModal, setBulkPayModal] = useState(false)
+  const [bulkAmount, setBulkAmount]   = useState('')
+  const [bulkSaving, setBulkSaving]   = useState(false)
 
   const loadData = async () => {
     try {
@@ -232,6 +239,45 @@ export default function InstallmentDetail() {
   }
 
   useEffect(() => { loadData() }, [id])
+
+  const loadLedger = async () => {
+    setLedgerLoading(true)
+    try {
+      const r = await api.get(`/installments/${id}/ledger`)
+      setLedger(r.data.data)
+    } catch { toast.error('Ledger load nahi ho saka') }
+    finally { setLedgerLoading(false) }
+  }
+
+  useEffect(() => { if (activeTab === 'khata') loadLedger() }, [activeTab])
+
+  const handleBulkPay = async () => {
+    if (!bulkAmount || Number(bulkAmount) <= 0) { toast.error('Raqam darj karein'); return }
+    setBulkSaving(true)
+    try {
+      await api.post('/payments/schedule/bulk-pay', { installmentId: id, amount: Number(bulkAmount) })
+      toast.success('Payment FIFO se lagayi gayi!')
+      setBulkPayModal(false); setBulkAmount('')
+      loadLedger(); loadData()
+    } catch (e) { toast.error(e.response?.data?.message || 'Error') }
+    finally { setBulkSaving(false) }
+  }
+
+  const handleSlotStatus = async (slotId, status) => {
+    try {
+      await api.patch(`/payments/schedule/${slotId}/status`, { status, installmentId: id })
+      toast.success(`Slot ${status === 'paid' ? '✅ Paid' : '❌ Missed'} mark ho gaya!`)
+      loadLedger(); loadData()
+    } catch (e) { toast.error(e.response?.data?.message || 'Error') }
+  }
+
+  const printStatement = async () => {
+    try {
+      const r = await api.post('/pdf/customer-statement', { installmentId: id }, { responseType: 'blob' })
+      const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }))
+      window.open(url, '_blank')
+    } catch { toast.error('Print nahi ho saka') }
+  }
 
   if (isLoading) {
     return (
@@ -273,6 +319,106 @@ export default function InstallmentDetail() {
         </div>
       }
     >
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-6 w-fit">
+        {[['overview','📋 Overview'], ['khata','📒 Khata (Ledger)']].map(([tab, label]) => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}>{label}</button>
+        ))}
+      </div>
+
+      {activeTab === 'khata' && (
+        <div className="space-y-4">
+          {/* Khata Summary */}
+          {ledger && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[['Total Price', ledger.installment.installmentPrice, '#1a1a6e'],
+                  ['Total Paid', ledger.summary.totalPaid, '#166534'],
+                  ['Arrears (Baqaya)', ledger.summary.arrears, '#dc2626'],
+                  ['Remaining', ledger.installment.remainingAmount, '#92400e']
+                ].map(([label, val, color]) => (
+                  <div key={label} className="erp-card p-4 text-center">
+                    <div className="text-xs text-slate-500 mb-1">{label}</div>
+                    <div className="text-lg font-black" style={{color}}>{formatCurrency(val)}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-between items-center">
+                <div className="flex gap-2">
+                  <button onClick={() => setBulkPayModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700">
+                    <DollarSign size={15} /> Pay Custom Amount (FIFO)
+                  </button>
+                  <button onClick={printStatement}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm font-medium rounded-xl hover:bg-indigo-100">
+                    <Printer size={15} /> Print Khata
+                  </button>
+                </div>
+                {ledger.installment.assetId && (
+                  <Link to={`/assets/${ledger.installment.assetId}/history`}
+                    className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
+                    <ExternalLink size={14} /> View Asset History
+                  </Link>
+                )}
+              </div>
+              {/* Schedule table */}
+              <div className="erp-card overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        {['#', 'Due Date', 'Amount', 'Status', 'Paid On', 'Collected By', 'Actions'].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ledger.schedule.map((slot, i) => (
+                        <tr key={slot._id} className={`${slot.status === 'missed' ? 'bg-red-50/60' : slot.status === 'paid' ? 'bg-emerald-50/40' : 'bg-white'}`}>
+                          <td className="px-4 py-2.5 text-slate-400 text-xs">{i + 1}</td>
+                          <td className="px-4 py-2.5 font-medium text-slate-700">
+                            {slot.dueDate ? new Date(slot.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 font-bold">{formatCurrency(slot.paidAmount || ledger.installment.perInstallmentAmount)}</td>
+                          <td className="px-4 py-2.5">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                              slot.status === 'paid' ? 'bg-emerald-100 text-emerald-700'
+                              : slot.status === 'missed' ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {slot.status === 'paid' ? '✅ Paid' : slot.status === 'missed' ? '❌ Missed' : '🟡 Pending'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs">
+                            {slot.paidDate ? new Date(slot.paidDate).toLocaleDateString('en-GB') : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs">{slot.collectedBy?.name || '—'}</td>
+                          <td className="px-4 py-2.5">
+                            {slot.status !== 'paid' && (
+                              <button onClick={() => handleSlotStatus(slot._id, 'paid')}
+                                className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 mr-1">✅ Mark Paid</button>
+                            )}
+                            {slot.status !== 'missed' && slot.status !== 'paid' && (
+                              <button onClick={() => handleSlotStatus(slot._id, 'missed')}
+                                className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200">❌ Missed</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+          {ledgerLoading && <div className="erp-card p-10 text-center text-slate-400 animate-pulse">Ledger load ho raha hai...</div>}
+        </div>
+      )}
+
+      {activeTab === 'overview' && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* ── Left Column: Product & Financials ── */}
@@ -459,6 +605,7 @@ export default function InstallmentDetail() {
 
         </div>
       </div>
+      )}
 
       {/* Vasooli Modal */}
       {vasooliOpen && data && (
@@ -476,6 +623,25 @@ export default function InstallmentDetail() {
           customer={data.customer}
           onClose={() => setAgreementOpen(false)}
         />
+      )}
+
+      {/* Bulk Pay Modal */}
+      {bulkPayModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="font-bold text-lg mb-1">💰 Pay Custom Amount (FIFO)</h3>
+            <p className="text-sm text-slate-500 mb-4">Raqam enter karein. System oldest missed/pending installments pehle mark karega.</p>
+            <input type="number" value={bulkAmount} onChange={e => setBulkAmount(e.target.value)}
+              placeholder="e.g. 15000" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none mb-4" />
+            <div className="flex gap-3">
+              <button onClick={() => setBulkPayModal(false)} className="flex-1 px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium">Cancel</button>
+              <button onClick={handleBulkPay} disabled={bulkSaving}
+                className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">
+                {bulkSaving ? 'Lag rahi hai...' : 'Apply Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </PageWrapper>
   )

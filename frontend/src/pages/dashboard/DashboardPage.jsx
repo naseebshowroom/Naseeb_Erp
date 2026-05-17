@@ -250,12 +250,149 @@ export default function DashboardPage() {
                  <span className="flex items-center gap-3 font-medium text-sm text-slate-700"><ListChecks size={18}/> Manage Installments</span>
                  <ChevronRight size={16} className="text-slate-400"/>
               </button>
+              <button onClick={() => navigate('/assets')} className="w-full flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:border-black hover:bg-slate-50 transition-colors">
+                 <span className="flex items-center gap-3 font-medium text-sm text-slate-700"><Package size={18}/> Assets / Inventory</span>
+                 <ChevronRight size={16} className="text-slate-400"/>
+              </button>
             </div>
           </div>
 
         </div>
 
       </div>
+
+      {/* ═══ AAJ KI VASOOLI SECTION ════════════════════════════════════════════ */}
+      <VasooliSection />
+
     </PageWrapper>
   );
+}
+
+// ── Aaj Ki Vasooli ─────────────────────────────────────────────────────────────
+function VasooliSection() {
+  const TABS = [
+    { id: 'daily',   label: 'Rozana (Daily)' },
+    { id: 'weekly',  label: 'Haftawar (Weekly)' },
+    { id: 'monthly', label: 'Mahana (Monthly)' },
+  ]
+  const [activeTab, setActiveTab] = useState('daily')
+  const [rows, setRows]           = useState([])
+  const [loading, setLoading]     = useState(false)
+  const [payModal, setPayModal]   = useState(null) // { scheduleEntry, installmentId, customer, perInstallmentAmount }
+
+  const load = async (type) => {
+    setLoading(true)
+    try {
+      const r = await api.get(`/installments/due-today?type=${type}`)
+      setRows(r.data.data || [])
+    } catch { /* silent */ }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load(activeTab) }, [activeTab])
+
+  const markStatus = async (scheduleId, installmentId, status) => {
+    try {
+      await api.patch(`/payments/schedule/${scheduleId}/status`, { status, installmentId })
+      load(activeTab)
+    } catch (e) { alert(e.response?.data?.message || 'Error') }
+  }
+
+  const totalDue = rows.reduce((s, r) => s + (r.perInstallmentAmount || 0), 0)
+  const paidRows = rows.filter(r => r.scheduleEntry?.status === 'paid')
+  const totalCollected = paidRows.reduce((s, r) => s + (r.scheduleEntry?.paidAmount || r.perInstallmentAmount || 0), 0)
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-xl font-black text-slate-900">💰 Aaj Ki Vasooli (Today's Collection)</h2>
+          <p className="text-sm text-slate-500 mt-0.5">Aaj ki qistain jo wasool karni hain</p>
+        </div>
+        <div className="flex gap-4 text-sm">
+          <div className="text-right">
+            <div className="text-slate-400">Total Due</div>
+            <div className="font-black text-slate-900">{formatCurrency(totalDue)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-slate-400">Collected</div>
+            <div className="font-black text-emerald-600">{formatCurrency(totalCollected)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4 w-fit">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="erp-card overflow-hidden">
+        {loading ? (
+          <div className="p-10 text-center text-slate-400 animate-pulse">Loading vasooli...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {['Customer', 'Item', 'Khata #', 'Due Amount', 'Schedule', 'Status', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.length > 0 ? rows.map((row, i) => {
+                  const status = row.scheduleEntry?.status || 'pending'
+                  return (
+                    <tr key={i} className={`${status === 'missed' ? 'bg-red-50' : status === 'paid' ? 'bg-emerald-50/40' : 'bg-white'} hover:bg-slate-50 transition-colors`}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">{row.customer?.fullName || '—'}</div>
+                        <div className="text-xs text-slate-400">{row.customer?.phone}</div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{row.brand} {row.model}</td>
+                      <td className="px-4 py-3 font-mono text-slate-700">{row.khataNumber || '—'}</td>
+                      <td className="px-4 py-3 font-bold text-slate-900">{formatCurrency(row.perInstallmentAmount)}</td>
+                      <td className="px-4 py-3 text-slate-500 capitalize text-xs">{row.scheduleType}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          status === 'paid' ? 'bg-emerald-100 text-emerald-700'
+                          : status === 'missed' ? 'bg-red-100 text-red-700'
+                          : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {status === 'paid' ? '✅ Paid' : status === 'missed' ? '❌ Missed' : '🟡 Pending'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {status !== 'paid' && (
+                          <button onClick={() => markStatus(row.scheduleEntry?._id, row._id, 'paid')}
+                            className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 mr-1 font-medium">
+                            ✅ Paise Mil Gaye
+                          </button>
+                        )}
+                        {status === 'pending' && (
+                          <button onClick={() => markStatus(row.scheduleEntry?._id, row._id, 'missed')}
+                            className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium">
+                            ❌ Nahi Diye
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                }) : (
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                    <CheckCircle2 size={36} className="mx-auto mb-2 text-emerald-300" />
+                    Is waqt koi qist due nahi hai! 🎉
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }

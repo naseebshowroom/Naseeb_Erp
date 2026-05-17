@@ -7,13 +7,14 @@ import {
   getReceiptData,
   deletePayment,
   getDailySummary,
-  getMonthlySummary
+  getMonthlySummary,
+  updateScheduleStatus,
+  bulkPaySchedule,
 } from '../controllers/payment.controller.js';
 import { protect, authorize } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
-// Validation Middleware
 const validateRequest = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -35,15 +36,17 @@ router.get('/collected-today', getCollectedToday);
 router.get('/summary/daily', getSummaryDaily);
 router.get('/summary/monthly', getMonthlySummary);
 
-// Workaround for undefined getSummaryDaily until we declare it inline for alias
 function getSummaryDaily(req, res) {
   return getDailySummary(req, res);
 }
 
+// Schedule-specific routes — must come before /:id
+router.patch('/schedule/:scheduleId/status', updateScheduleStatus);
+router.post('/schedule/bulk-pay', bulkPaySchedule);
+
 router.route('/')
   .get(getPayments)
   .post(recordPayment);
-
 
 router.route('/receipt/:id')
   .get(
@@ -54,7 +57,7 @@ router.route('/receipt/:id')
 
 router.route('/:id')
   .delete(
-    authorize('owner'), // Only owner can delete/reverse money logs
+    authorize('owner'),
     param('id').isMongoId().withMessage('Invalid payment ID'),
     validateRequest,
     deletePayment

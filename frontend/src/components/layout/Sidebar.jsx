@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Users, CreditCard, Wallet,
   Package, Truck, UserCheck, BarChart3,
   FileText, Settings, LogOut, X, Building2,
-  ChevronRight, MapPin
+  ChevronRight, MapPin, Box, ClipboardList
 } from 'lucide-react'
 
 // ── Navigation structure ─────────────────────────────────
@@ -20,10 +20,12 @@ const NAV_SECTIONS = [
   {
     label: 'Operations',
     items: [
-      { to: '/collections',  icon: MapPin,     label: 'Collections' },
-      { to: '/inventory',    icon: Package,    label: 'Inventory' },
-      { to: '/distributors', icon: Truck,      label: 'Distributors' },
-      { to: '/workers',      icon: UserCheck,  label: 'Workers' },
+      { to: '/collections',    icon: MapPin,          label: 'Collections' },
+      { to: '/inventory',      icon: Package,         label: 'Inventory' },
+      { to: '/assets',         icon: Box,             label: 'Assets / Inventory' },
+      { to: '/distributors',   icon: Truck,           label: 'Distributors' },
+      { to: '/workers',        icon: UserCheck,       label: 'Workers' },
+      { to: '/workers/report', icon: ClipboardList,   label: 'Worker Report' },
     ],
   },
   {

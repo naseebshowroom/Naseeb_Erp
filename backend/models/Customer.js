@@ -32,12 +32,15 @@ const guarantorSchema = new mongoose.Schema({
 const customerSchema = new mongoose.Schema({
   fullName: { type: String, required: true, trim: true },
   fatherName: { type: String, required: true, trim: true },
+
+  // CNIC is OPTIONAL — sparse unique so multiple blank values don't conflict
   cnic: { 
     type: String, 
-    required: true, 
+    sparse: true,          // null/undefined values are excluded from unique index
     unique: true,
     match: [/^[0-9]{5}-[0-9]{7}-[0-9]{1}$/, 'Invalid CNIC format']
   },
+
   phone: { 
     type: String, 
     required: true,
@@ -46,6 +49,9 @@ const customerSchema = new mongoose.Schema({
   alternatePhone: { type: String },
   address: { type: String, required: true },
   city: { type: String, required: true },
+
+  // Khata number — owner types manually, appears on all documents
+  khataNumber: { type: String, trim: true },
   
   // Uploaded documents URLs (Cloudinary)
   photo: { type: String },
@@ -58,7 +64,6 @@ const customerSchema = new mongoose.Schema({
     default: 'active'
   },
   
-
   guarantors: [guarantorSchema],
   
   createdBy: {

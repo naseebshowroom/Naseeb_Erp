@@ -13,6 +13,7 @@ import workerRoutes from './worker.routes.js';
 import collectionRoutes from './collection.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
 import globalRoutes from './global.routes.js';
+import assetRoutes from './asset.routes.js';
 
 const router = express.Router();
 
@@ -29,6 +30,7 @@ router.use('/pdf', pdfRoutes);
 router.use('/workers', workerRoutes);
 router.use('/collections', collectionRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/assets', assetRoutes);
 
 router.use('/', globalRoutes);
 

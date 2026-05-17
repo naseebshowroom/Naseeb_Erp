@@ -174,3 +174,62 @@ export const recordPayment = async (req, res) => {
     res.status(400).json({ success: false, message: 'Error recording payment', error: error.message });
   }
 };
+// ─── ADD A SUPPLIED ITEM (individual unit) ───────────────────
+export const addSuppliedItem = async (req, res) => {
+  try {
+    const distributor = await Distributor.findById(req.params.id);
+    if (!distributor) return res.status(404).json({ success: false, message: 'Distributor not found' });
+
+    const { brand, make, model, chassisNumber, engineNumber, color, dateSupplied, quantity, unitPrice } = req.body;
+    if (!model || !unitPrice) {
+      return res.status(400).json({ success: false, message: 'model and unitPrice are required' });
+    }
+
+    distributor.suppliedItems.push({
+      brand, make, model, chassisNumber, engineNumber, color,
+      dateSupplied: dateSupplied ? new Date(dateSupplied) : new Date(),
+      quantity: Number(quantity) || 1,
+      unitPrice: Number(unitPrice),
+      status: 'In-Stock',
+    });
+
+    await distributor.save();
+    res.status(201).json({ success: true, data: distributor });
+  } catch (error) {
+    res.status(400).json({ success: false, message: 'Error adding item', error: error.message });
+  }
+};
+
+// ─── UPDATE SUPPLIED ITEM STATUS ─────────────────────────────
+export const updateSuppliedItemStatus = async (req, res) => {
+  try {
+    const distributor = await Distributor.findById(req.params.id);
+    if (!distributor) return res.status(404).json({ success: false, message: 'Distributor not found' });
+
+    const item = distributor.suppliedItems.id(req.params.itemId);
+    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+
+    const { status, assignedToInstallment } = req.body;
+    if (status) item.status = status;
+    if (assignedToInstallment) item.assignedToInstallment = assignedToInstallment;
+
+    await distributor.save();
+    res.status(200).json({ success: true, data: distributor });
+  } catch (error) {
+    res.status(400).json({ success: false, message: 'Error updating item', error: error.message });
+  }
+};
+
+// ─── DELETE SUPPLIED ITEM ─────────────────────────────────────
+export const deleteSuppliedItem = async (req, res) => {
+  try {
+    const distributor = await Distributor.findById(req.params.id);
+    if (!distributor) return res.status(404).json({ success: false, message: 'Distributor not found' });
+
+    distributor.suppliedItems.pull({ _id: req.params.itemId });
+    await distributor.save();
+    res.status(200).json({ success: true, message: 'Item removed' });
+  } catch (error) {
+    res.status(400).json({ success: false, message: 'Error deleting item', error: error.message });
+  }
+};

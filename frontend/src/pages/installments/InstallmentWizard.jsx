@@ -1,568 +1,430 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { useForm, Controller } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import * as z from 'zod'
-import { Check, ChevronRight, ChevronLeft, Save, Search, UserPlus, Smartphone, Snowflake, Monitor, Combine, Refrigerator, Bike, Car, Box } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronRight, ChevronLeft, Check, AlertTriangle, Info, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
-import PageWrapper from '@/components/ui/PageWrapper'
+import api from '@/lib/axios'
 import { formatCurrency } from '@/lib/utils'
-import installmentService from '@/services/installmentService'
-import { handleApiError } from '@/utils/errorHandler'
-import customerService from '@/services/customerService'
 
-// ── Icons for categories ──
-const CATEGORIES = [
-  { id: 'mobile', label: 'Mobile Phone', icon: Smartphone },
-  { id: 'ac', label: 'Air Conditioner', icon: Snowflake },
-  { id: 'tv', label: 'LCD / TV', icon: Monitor },
-  { id: 'washing_machine', label: 'Washing Machine', icon: Combine },
-  { id: 'fridge', label: 'Refrigerator', icon: Refrigerator },
-  { id: 'motorcycle', label: 'Motorcycle', icon: Bike },
-  { id: 'car', label: 'Car', icon: Car },
-  { id: 'other', label: 'Other', icon: Box },
-]
+const STEPS = ['Customer', 'Product', 'Schedule', 'Review']
 
-// ── Validation Schemas ──
-const cnicRegex = /^[0-9]{5}-[0-9]{7}-[0-9]{1}$/
-const phoneRegex = /^03[0-9]{2}-[0-9]{7}$/
+const INVESTOR_OPTIONS = ['Owner', 'Partner-Brother', 'Partner-1', 'Partner-2', 'Other']
+const CATEGORIES = ['motorcycle', 'car', 'mobile', 'ac', 'lcd', 'fridge', 'washing_machine', 'other']
+const SCHEDULE_TYPES = ['daily', 'weekly', '5-day', '10-day', 'monthly']
+const ASSET_STATUSES = ['In-Use', 'Returned', 'Resold-to-Other']
 
-const customerCreateSchema = z.object({
-  customerName: z.string().min(1, "Gahak ka naam zaroori hai"),
-  fatherName: z.string().min(1, "Walid ka naam zaroori hai"),
-  cnic: z.string().regex(cnicRegex, "Must be format: 00000-0000000-0"),
-  phone: z.string().regex(phoneRegex, "Must be format: 0300-0000000"),
-  city: z.string().min(1, "Shehar ka naam zaroori hai"),
-  address: z.string().min(1, "Mukammal pata zaroori hai"),
-})
-
-const baseProductSchema = z.object({
-  category: z.string().min(1, "Category chunna zaroori hai"),
-  ownerPurchasePrice: z.number().min(1, "Khareed keemat zaroori hai"),
-  installmentPrice: z.number().min(1, "Sale keemat zaroori hai"),
-})
-
-const electronicsSchema = baseProductSchema.extend({
-  brand: z.string().min(1, "Brand/Company zaroori hai"),
-  model: z.string().min(1, "Model zaroori hai"),
-  color: z.string().optional(),
-  serialNumber: z.string().optional(),
-  condition: z.enum(['new', 'used']),
-})
-
-const motorcycleSchema = baseProductSchema.extend({
-  brand: z.string().min(1, "Company zaroori hai"),
-  model: z.string().min(1, "Model zaroori hai"),
-  color: z.string().min(1, "Rang zaroori hai"),
-  engineNo: z.string().min(1, "Engine No. zaroori hai"),
-  chassisNo: z.string().min(1, "Chassis No. zaroori hai"),
-  regNo: z.string().optional(),
-  distributor: z.string().min(1, "Distributor zaroori hai"),
-  marketPrice: z.number().optional(),
-})
-
-const carSchema = baseProductSchema.extend({
-  brand: z.string().min(1, "Make/Brand zaroori hai"),
-  model: z.string().min(1, "Model zaroori hai"),
-  year: z.string().min(4, "Model ka saal zaroori hai"),
-  color: z.string().min(1, "Rang zaroori hai"),
-  engineNo: z.string().min(1, "Engine No. zaroori hai"),
-  chassisNo: z.string().min(1, "Chassis No. zaroori hai"),
-  regNo: z.string().optional(),
-})
-
-const scheduleSchema = z.object({
-  advancePayment: z.number().min(0, "Peshgi rakam manfi (negative) nahi ho sakti"),
-  installmentsCount: z.number().min(1, "Kam az kam 1 qist zaroori hai"),
-  scheduleType: z.enum(['daily', 'weekly', '5-day', '10-day', 'monthly']),
-  startDate: z.string().min(1, "Shuru ki tareekh zaroori hai"),
-  notes: z.string().optional(),
-})
-
-// ── Shared UI Utilities ──
-const inputCls = (hasError, prefix) =>
-  `w-full px-3 py-2 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm transition-colors ${prefix ? 'pl-10' : ''} ${hasError ? 'border-red-300' : 'border-slate-200'}`
-
-// ── Auto-format helpers ──
-function formatCNIC(raw) {
-  const digits = raw.replace(/\D/g, '').slice(0, 13)
-  let res = ''
-  if (digits.length > 0) res += digits.slice(0, 5)
-  if (digits.length > 5) res += '-' + digits.slice(5, 12)
-  if (digits.length > 12) res += '-' + digits.slice(12, 13)
-  return res
+const INIT = {
+  // Customer
+  fullName: '', fatherName: '', cnic: '', phone: '', city: '', address: '',
+  khataNumber: '', investorName: 'Owner',
+  // Product
+  category: 'motorcycle', customCategory: '', brand: '', model: '', color: '',
+  engineNumber: '', chassisNumber: '', serialNumber: '', condition: 'new',
+  distributor: '', purchasePrice: '', installmentPrice: '',
+  isCashSale: false, registrationFee: '',
+  assetStatus: 'In-Use', resoldToName: '', resoldToPhone: '',
+  // asset lifecycle
+  assetId: '', assetConflictNote: '',
+  // Schedule
+  advanceAmount: '', noAdvance: false,
+  perInstallmentAmount: '', totalInstallments: '', openEnded: false,
+  scheduleType: 'monthly', startDate: new Date().toISOString().split('T')[0],
+  // Notes
+  notes: ''
 }
 
-function formatPhone(raw) {
-  const digits = raw.replace(/\D/g, '').slice(0, 11)
-  let res = ''
-  if (digits.length > 0) res += digits.slice(0, 4)
-  if (digits.length > 4) res += '-' + digits.slice(4, 11)
-  return res
-}
-
-// ── Reusable Input Components (OUTSIDE to prevent focus loss) ──
-function InputField({ label, name, placeholder, type = "text", as = "input", prefix, register, errors }) {
-  const err = errors[name]
-  return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700">
-        {label} {err && <span className="text-red-500">*</span>}
-      </label>
-      <div className="relative">
-        {prefix && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">{prefix}</div>}
-        {as === "textarea" ? (
-          <textarea 
-            {...register(name)} rows={3} placeholder={placeholder}
-            className={inputCls(err, prefix)}
-          />
-        ) : (
-          <input 
-            type={type} {...register(name, { valueAsNumber: type === 'number' })} placeholder={placeholder}
-            className={inputCls(err, prefix)}
-          />
-        )}
-      </div>
-      {err && <p className="text-xs text-red-500 font-medium">{err.message}</p>}
-    </div>
-  )
-}
-
-function MaskedInput({ label, name, placeholder, formatter, control, errors, maxLength }) {
-  const err = errors[name]
-  return (
-    <Controller
-      name={name}
-      control={control}
-      render={({ field: { onChange, value, ref } }) => (
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-slate-700">
-            {label} {err && <span className="text-red-500">*</span>}
-          </label>
-          <input
-            ref={ref}
-            value={value || ''}
-            onChange={(e) => onChange(formatter(e.target.value))}
-            placeholder={placeholder}
-            maxLength={maxLength}
-            inputMode="numeric"
-            className={inputCls(err)}
-          />
-          {err && <p className="text-xs text-red-500 font-medium">{err.message}</p>}
-        </div>
-      )}
-    />
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────
 export default function InstallmentWizard() {
-  const { id } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const customerIdParam = searchParams.get('customerId')
-  const isEditing = Boolean(id)
-  
-  const [currentStep, setCurrentStep] = useState(0)
-  const [selectedCategory, setSelectedCategory] = useState(null)
-  const [isLoading, setIsLoading] = useState(isEditing)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  
-  const getProductSchema = () => {
-    if (!selectedCategory) return z.object({})
-    if (selectedCategory === 'motorcycle') return motorcycleSchema
-    if (selectedCategory === 'car') return carSchema
-    return electronicsSchema
-  }
+  const [step, setStep]         = useState(0)
+  const [form, setForm]         = useState(INIT)
+  const [saving, setSaving]     = useState(false)
+  const [distributors, setDistributors] = useState([])
 
-  const stepSchemas = [
-    customerCreateSchema,
-    getProductSchema(),
-    scheduleSchema,
-    z.object({})
-  ]
+  // Chassis detection state
+  const [chassisSearch, setChassisSearch] = useState({ loading: false, found: null, conflict: false })
+  const chassisTimer = useRef(null)
 
-  const { register, handleSubmit, trigger, watch, setValue, getValues, reset, control, formState: { errors } } = useForm({
-    resolver: zodResolver(stepSchemas[currentStep]),
-    mode: 'onTouched',
-    defaultValues: {
-      category: '', condition: 'new', scheduleType: 'monthly', installmentsCount: 12, startDate: new Date().toISOString().split('T')[0]
-    }
-  })
-
-  const wInstallmentPrice = watch('installmentPrice') || 0
-  const wPurchasePrice = watch('ownerPurchasePrice') || 0
-  const profitMargin = wInstallmentPrice - wPurchasePrice
-
-  // Hydrate if editing
   useEffect(() => {
-    if (!isEditing) return
-    const fetch = async () => {
+    api.get('/distributors').then(r => setDistributors(r.data.data || [])).catch(() => {})
+  }, [])
+
+  const set = (field, val) => setForm(p => ({ ...p, [field]: val }))
+
+  // Debounced chassis lookup
+  const onChassisChange = (val) => {
+    set('chassisNumber', val)
+    set('assetId', '')
+    setChassisSearch({ loading: false, found: null, conflict: false })
+    clearTimeout(chassisTimer.current)
+    if (!val || val.length < 4) return
+    chassisTimer.current = setTimeout(async () => {
+      setChassisSearch(p => ({ ...p, loading: true }))
       try {
-        const res = await installmentService.getInstallment(id)
-        if (res.success) {
-          const d = res.data
-          setSelectedCategory(d.category)
-          reset({
-            customerName: d.customer?.fullName,
-            fatherName: d.customer?.fatherName,
-            cnic: d.customer?.cnic,
-            phone: d.customer?.phone,
-            city: d.customer?.city,
-            address: d.customer?.address,
-            category: d.category,
-            brand: d.brand,
-            model: d.model,
-            color: d.color,
-            engineNo: d.engineNumber,
-            chassisNo: d.chassisNumber,
-            regNo: d.registrationNumber,
-            distributor: d.distributor?._id || d.distributor,
-            ownerPurchasePrice: d.purchasePrice,
-            installmentPrice: d.installmentPrice,
-            advancePayment: d.advanceAmount,
-            installmentsCount: d.totalInstallments,
-            scheduleType: d.scheduleType,
-            startDate: d.startDate?.split('T')[0],
-          })
+        const r = await api.get(`/assets/search?chassis=${encodeURIComponent(val)}`)
+        const assets = r.data.data || []
+        if (assets.length === 0) {
+          setChassisSearch({ loading: false, found: null, conflict: false })
+        } else {
+          const asset = assets[0]
+          const conflict = asset.currentStatus === 'on-installment'
+          setChassisSearch({ loading: false, found: asset, conflict })
         }
-      } catch (err) { handleApiError(err) }
-      finally { setIsLoading(false) }
-    }
-    fetch()
-  }, [id, isEditing, reset])
-
-  // Hydrate customer if pre-selected via URL
-  useEffect(() => {
-    if (isEditing || !customerIdParam) return
-    const fetchCust = async () => {
-      setIsLoading(true)
-      try {
-        const res = await customerService.getCustomer(customerIdParam)
-        if (res.success) {
-          const c = res.data
-          reset({
-            ...getValues(),
-            customerName: c.fullName,
-            fatherName: c.fatherName,
-            cnic: c.cnic,
-            phone: c.phone,
-            city: c.city,
-            address: c.address,
-          })
-          setCurrentStep(1) // Advance to Product step automatically
-        }
-      } catch (err) { handleApiError(err) }
-      finally { setIsLoading(false) }
-    }
-    fetchCust()
-  }, [customerIdParam, isEditing, reset])
-
-  const steps = [
-    { id: 1, title: 'Gahak (Customer)', desc: 'Bunyadi maloomat' },
-    { id: 2, title: 'Samaan (Product)', desc: 'Item ki tafseel' },
-    { id: 3, title: 'Qistain (Plan)', desc: 'Payment schedule' },
-    { id: 4, title: 'Review', desc: 'Confirm & Save' },
-  ]
-
-  const nextStep = async () => {
-    const valid = await trigger()
-    if (valid) setCurrentStep(p => Math.min(p + 1, 3))
-  }
-  const prevStep = () => setCurrentStep(p => Math.max(p - 1, 0))
-
-  const handleCategorySelect = (catId) => {
-    setSelectedCategory(catId)
-    setValue('category', catId)
+      } catch {
+        setChassisSearch({ loading: false, found: null, conflict: false })
+      }
+    }, 600)
   }
 
-  const onSubmit = async () => {
-    // Use getValues() directly — the zodResolver on step 4 is z.object({})
-    // which strips all values from the `data` param, so we read the store directly
-    const data = getValues()
-    setIsSubmitting(true)
+  const useExistingAsset = () => {
+    set('assetId', chassisSearch.found._id)
+    toast.success('Existing asset record linked!')
+  }
+
+  const effectiveStep = form.isCashSale && step >= 2 ? step + 1 : step
+  const maxSteps = form.isCashSale ? 3 : 4
+
+  const next = () => {
+    if (form.isCashSale && step === 1) { setStep(3); return }
+    setStep(s => Math.min(s + 1, maxSteps - 1))
+  }
+  const prev = () => {
+    if (form.isCashSale && step === 3) { setStep(1); return }
+    setStep(s => Math.max(s - 1, 0))
+  }
+
+  const submit = async () => {
+    setSaving(true)
     try {
       const payload = {
-        customer: customerIdParam || {
-          fullName:   data.customerName,
-          fatherName: data.fatherName,
-          cnic:       data.cnic,
-          phone:      data.phone,
-          city:       data.city,
-          address:    data.address,
-          guarantors: [],
+        customer: {
+          fullName: form.fullName, fatherName: form.fatherName,
+          ...(form.cnic ? { cnic: form.cnic } : {}),
+          phone: form.phone, city: form.city, address: form.address,
+          khataNumber: form.khataNumber,
         },
-        category:           data.category,
-        brand:              data.brand,
-        model:              data.model,
-        color:              data.color,
-        engineNumber:       data.engineNo,
-        chassisNumber:      data.chassisNo,
-        registrationNumber: data.regNo,
-        distributor:        data.distributor,
-        purchasePrice:      Number(data.ownerPurchasePrice),
-        installmentPrice:   Number(data.installmentPrice),
-        advanceAmount:      Number(data.advancePayment),
-        totalInstallments:  Number(data.installmentsCount),
-        scheduleType:       data.scheduleType,
-        startDate:          data.startDate,
+        khataNumber:      form.khataNumber,
+        investorName:     form.investorName,
+        category:         form.category,
+        customCategory:   form.customCategory,
+        brand: form.brand, model: form.model, color: form.color,
+        engineNumber: form.engineNumber, chassisNumber: form.chassisNumber,
+        serialNumber: form.serialNumber, condition: form.condition,
+        distributor: form.distributor || undefined,
+        purchasePrice:    Number(form.purchasePrice),
+        installmentPrice: Number(form.installmentPrice),
+        isCashSale:       form.isCashSale,
+        registrationFee:  Number(form.registrationFee) || 0,
+        assetStatus:      form.assetStatus,
+        ...(form.assetStatus === 'Resold-to-Other' ? { resoldToName: form.resoldToName, resoldToPhone: form.resoldToPhone } : {}),
+        assetId:          form.assetId || undefined,
+        ...(form.assetConflictNote ? { assetConflictNote: form.assetConflictNote } : {}),
+        advanceAmount:    form.noAdvance ? 0 : Number(form.advanceAmount) || 0,
+        perInstallmentAmount: Number(form.perInstallmentAmount) || undefined,
+        totalInstallments: form.openEnded ? undefined : Number(form.totalInstallments) || undefined,
+        scheduleType:     form.isCashSale ? undefined : form.scheduleType,
+        startDate:        form.isCashSale ? undefined : form.startDate,
+        notes:            form.notes,
       }
-      await installmentService.createInstallment(payload)
-      toast.success('Naya khata kamyabi se ban gaya!')
-      navigate('/installments')
-    } catch (err) { handleApiError(err) }
-    finally { setIsSubmitting(false) }
+      const r = await api.post('/installments', payload)
+      toast.success('Installment successfully bana di!')
+      navigate(`/installments/${r.data.data._id}`)
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Error')
+    } finally { setSaving(false) }
   }
 
-  const fieldProps = { register, errors }
+  const Input = ({ label, field, type = 'text', placeholder, required, hint }) => (
+    <div className="space-y-1">
+      <label className="text-sm font-medium text-slate-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+      <input type={type} value={form[field]} onChange={e => set(field, e.target.value)}
+        placeholder={placeholder} required={required}
+        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+      {hint && <p className="text-xs text-slate-400">{hint}</p>}
+    </div>
+  )
+
+  const Select = ({ label, field, options, required }) => (
+    <div className="space-y-1">
+      <label className="text-sm font-medium text-slate-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+      <select value={form[field]} onChange={e => set(field, e.target.value)}
+        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        {options.map(o => typeof o === 'string'
+          ? <option key={o} value={o}>{o}</option>
+          : <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  )
+
+  // ── Step 0: Customer ─────────────────────────────────────────────────────────
+  const StepCustomer = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input label="Full Name (Poora Naam)" field="fullName" required placeholder="e.g. Muhammad Ali" />
+        <Input label="Father's Name (Walid ka Naam)" field="fatherName" required placeholder="e.g. Muhammad Hussain" />
+        <Input label="CNIC (Optional)" field="cnic" placeholder="XXXXX-XXXXXXX-X" hint="Leave blank if no CNIC available" />
+        <Input label="Phone (Mobile)" field="phone" required placeholder="0300-1234567" />
+        <Input label="City" field="city" required placeholder="e.g. Khuzdar" />
+        <Input label="Khata Number (Daftar Nambur)" field="khataNumber" placeholder="e.g. 047" hint="Owner types manually — appears on all documents" />
+      </div>
+      <Input label="Address (Ghar ka Pata)" field="address" required placeholder="Full address" />
+      <Select label="Investor / Capital (Sarmaaya Kisne Lagaya)" field="investorName" options={INVESTOR_OPTIONS} />
+    </div>
+  )
+
+  // ── Step 1: Product ──────────────────────────────────────────────────────────
+  const StepProduct = () => (
+    <div className="space-y-4">
+      {/* Cash Sale Toggle */}
+      <div
+        onClick={() => set('isCashSale', !form.isCashSale)}
+        className={`cursor-pointer border-2 rounded-xl p-4 flex items-center gap-3 transition-colors ${form.isCashSale ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${form.isCashSale ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300'}`}>
+          {form.isCashSale && <Check size={11} className="text-white" />}
+        </div>
+        <div>
+          <div className="font-bold text-slate-900">💵 Direct Cash Sale (Naqd Farokht)</div>
+          <div className="text-xs text-slate-500">No installment plan — full cash payment only. Schedule step will be skipped.</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Select label="Category (Qisam)" field="category" options={CATEGORIES} required />
+        {form.category === 'other' && <Input label="Custom Category" field="customCategory" placeholder="Fan, Speaker, etc." />}
+        <Input label="Brand (Kumpani)" field="brand" placeholder="Honda, Samsung, etc." />
+        <Input label="Model" field="model" placeholder="CD70, Galaxy S23, etc." />
+        <Input label="Color (Rang)" field="color" placeholder="Red, Black, White..." />
+        <Select label="Condition (Haalat)" field="condition" options={[{value:'new',label:'New'},{value:'used',label:'Used'}]} />
+      </div>
+
+      {/* Chassis detection (motorcycles/cars) */}
+      {['motorcycle','car'].includes(form.category) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Chassis # (Chassis Nambur)</label>
+            <div className="relative">
+              <input value={form.chassisNumber} onChange={e => onChassisChange(e.target.value)}
+                placeholder="Enter chassis number..."
+                className="w-full px-3 py-2 pr-9 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              {chassisSearch.loading && <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-pulse" />}
+            </div>
+            {/* Chassis search results */}
+            {!chassisSearch.loading && chassisSearch.found && !chassisSearch.conflict && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="text-sm font-bold text-blue-800">ℹ️ This chassis is in your system</div>
+                <div className="text-xs text-blue-600 mt-1">{chassisSearch.found.brand} {chassisSearch.found.model} — {chassisSearch.found.color}</div>
+                <div className="text-xs text-blue-500">Status: {chassisSearch.found.currentStatus}</div>
+                {!form.assetId && (
+                  <button onClick={useExistingAsset}
+                    className="mt-2 px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                    ✓ Use This Existing Asset Record
+                  </button>
+                )}
+                {form.assetId && <div className="mt-1 text-xs text-emerald-600 font-bold">✅ Linked to existing asset</div>}
+              </div>
+            )}
+            {!chassisSearch.loading && chassisSearch.conflict && (
+              <div className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-xl">
+                <div className="text-sm font-bold text-amber-800 flex items-center gap-1.5"><AlertTriangle size={14} /> WARNING: Bike currently on installment!</div>
+                <div className="text-xs text-amber-700 mt-1">{chassisSearch.found.brand} {chassisSearch.found.model} is with another customer.</div>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => { set('chassisNumber', ''); setChassisSearch({ loading: false, found: null, conflict: false }) }}
+                    className="px-3 py-1 text-xs bg-white border border-amber-300 text-amber-700 rounded-lg font-medium">Cancel</button>
+                  <button onClick={() => { set('assetId', chassisSearch.found._id); set('assetConflictNote', 'Asset on-installment at time of creation'); setChassisSearch(p => ({ ...p, conflict: false })) }}
+                    className="px-3 py-1 text-xs bg-amber-500 text-white rounded-lg font-medium">Yes, Proceed Anyway</button>
+                </div>
+              </div>
+            )}
+            {!chassisSearch.loading && form.chassisNumber && form.chassisNumber.length >= 4 && !chassisSearch.found && (
+              <div className="mt-1 text-xs text-emerald-600">✅ New asset — not in system</div>
+            )}
+          </div>
+          <Input label="Engine # (Engine Nambur)" field="engineNumber" placeholder="Enter engine number" />
+        </div>
+      )}
+
+      {/* Electronics serial */}
+      {!['motorcycle','car'].includes(form.category) && (
+        <Input label="Serial Number" field="serialNumber" placeholder="IMEI or serial" />
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input label="Purchase Price / Laagte (Rs.)" field="purchasePrice" type="number" required placeholder="85000" hint="What owner paid to distributor" />
+        <Input label={`${form.isCashSale ? 'Cash Sale' : 'Installment'} Price / Bechne ki Qeemat (Rs.)`} field="installmentPrice" type="number" required placeholder="120000" />
+        <Input label="Registration Fee (Rirjistrishun) (Rs.)" field="registrationFee" type="number" placeholder="0" />
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">Distributor (Supplier)</label>
+          <select value={form.distributor} onChange={e => set('distributor', e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none">
+            <option value="">-- Select Distributor --</option>
+            {distributors.map(d => <option key={d._id} value={d._id}>{d.name} — {d.companyName}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <Select label="Asset Status (Maal ki Halat)" field="assetStatus" options={ASSET_STATUSES} />
+      {form.assetStatus === 'Resold-to-Other' && (
+        <div className="grid grid-cols-2 gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+          <Input label="3rd Party Name" field="resoldToName" placeholder="Name of person" />
+          <Input label="3rd Party Phone" field="resoldToPhone" placeholder="0300-0000000" />
+        </div>
+      )}
+    </div>
+  )
+
+  // ── Step 2: Schedule ─────────────────────────────────────────────────────────
+  const StepSchedule = () => (
+    <div className="space-y-4">
+      <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
+        <Info size={15} className="mt-0.5 flex-shrink-0" />
+        Qist ki scheule banayein. Agar total number nahi pata, "Open-Ended" chunein.
+      </div>
+      {/* No Advance toggle */}
+      <div
+        onClick={() => { set('noAdvance', !form.noAdvance); if (!form.noAdvance) set('advanceAmount', '0') }}
+        className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 text-sm ${form.noAdvance ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.noAdvance ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
+          {form.noAdvance && <Check size={10} className="text-white" />}
+        </div>
+        <span className="font-medium text-slate-800">No Advance Given (Koi Peshgi Nahi)</span>
+      </div>
+      {!form.noAdvance && (
+        <Input label="Advance Amount (Peshgi Raqam) (Rs.)" field="advanceAmount" type="number" placeholder="10000" hint="If no advance, tick 'No Advance Given' above" />
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input label="Per Installment Amount / Qist (Rs.)" field="perInstallmentAmount" type="number" required placeholder="5000" hint="Enter manually — not auto-calculated" />
+        <Select label="Schedule Type (Qist ki Qisam)" field="scheduleType" options={SCHEDULE_TYPES} />
+        <Input label="Start Date (Shuru ki Tariikh)" field="startDate" type="date" />
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-slate-700">Total Installments (Kul Qistain)</label>
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => set('openEnded', !form.openEnded)}>
+              <div className={`w-9 h-5 rounded-full flex items-center transition-colors px-0.5 ${form.openEnded ? 'bg-purple-500 justify-end' : 'bg-slate-200 justify-start'}`}>
+                <div className="w-4 h-4 rounded-full bg-white shadow" />
+              </div>
+              <span className="text-xs text-slate-500">Open-Ended</span>
+            </div>
+          </div>
+          {!form.openEnded
+            ? <input type="number" value={form.totalInstallments} onChange={e => set('totalInstallments', e.target.value)}
+                placeholder="e.g. 12" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none" />
+            : <div className="px-3 py-2 bg-purple-50 border border-purple-100 rounded-xl text-xs text-purple-700 font-medium">Open-ended — no fixed total</div>
+          }
+        </div>
+      </div>
+
+      {form.perInstallmentAmount && !form.openEnded && form.totalInstallments && (
+        <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm text-slate-600">
+          💡 Estimated Total: <b className="text-slate-900">{formatCurrency(Number(form.perInstallmentAmount) * Number(form.totalInstallments))}</b>
+          {' '}over {form.totalInstallments} installments
+        </div>
+      )}
+    </div>
+  )
+
+  // ── Step 3: Review ───────────────────────────────────────────────────────────
+  const StepReview = () => {
+    const rows = [
+      ['Customer', form.fullName],
+      ['Father', form.fatherName],
+      ['CNIC', form.cnic || 'Not provided'],
+      ['Phone', form.phone],
+      ['Khata #', form.khataNumber || '—'],
+      ['Investor', form.investorName],
+      ['Category', form.category + (form.customCategory ? ` (${form.customCategory})` : '')],
+      ['Item', `${form.brand} ${form.model} ${form.color}`.trim()],
+      ['Sale Type', form.isCashSale ? '💵 CASH SALE' : '📋 Installment Plan'],
+      ['Sale Price', formatCurrency(Number(form.installmentPrice))],
+      ['Purchase Price', formatCurrency(Number(form.purchasePrice))],
+      ['Registration Fee', form.registrationFee ? formatCurrency(Number(form.registrationFee)) : 'None'],
+      ['Advance', form.noAdvance ? 'No Advance Given' : formatCurrency(Number(form.advanceAmount) || 0)],
+      ...(!form.isCashSale ? [
+        ['Per Qist', formatCurrency(Number(form.perInstallmentAmount))],
+        ['Total Qistain', form.openEnded ? 'Open-Ended' : form.totalInstallments],
+        ['Schedule', form.scheduleType],
+        ['Start Date', form.startDate],
+      ] : []),
+      ['Asset Status', form.assetStatus],
+      ...(form.assetId ? [['Asset Linked', '✅ Existing asset record']] : []),
+    ]
+    return (
+      <div className="space-y-4">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+          ✅ Review karein aur submit karein. Sab kuch theek hai?
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+          {rows.map(([k, v]) => (
+            <div key={k} className="flex gap-2 text-sm py-1.5 border-b border-slate-100">
+              <span className="text-slate-500 min-w-[130px] flex-shrink-0">{k}</span>
+              <span className="font-semibold text-slate-900">{v}</span>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">Notes (Optional)</label>
+          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
+            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none resize-none" />
+        </div>
+      </div>
+    )
+  }
+
+  const STEP_COMPONENTS = [StepCustomer, StepProduct, StepSchedule, StepReview]
+  const visibleStepLabels = form.isCashSale ? ['Customer', 'Product', 'Review'] : STEPS
+  const CurrentStep = STEP_COMPONENTS[step]
 
   return (
-    <PageWrapper 
-      title={isEditing ? 'Khata Edit Karein' : 'Naya Khata'}
-      subtitle="Naya khata shuru karne ke liye darj zail steps mukammal karein."
-      breadcrumbs={[{ label: 'Khatey', to: '/installments' }, { label: isEditing ? 'Edit' : 'Naya' }]}
-    >
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64 text-slate-500 font-medium">Khata load ho raha hai...</div>
-      ) : (
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* ── Stepper ── */}
-        <div className="erp-card p-6">
-          <div className="flex items-center justify-between relative">
-            {steps.map((step, idx) => (
-              <div key={step.id} className="flex flex-col items-center z-10 w-1/4">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors duration-300 ${
-                  currentStep > idx ? 'bg-emerald-500 border-emerald-500 text-white' : 
-                  currentStep === idx ? 'bg-blue-600 border-blue-600 text-white' : 
-                  'bg-white border-slate-200 text-slate-400'
-                }`}>
-                  {currentStep > idx ? <Check size={18} strokeWidth={3} /> : step.id}
-                </div>
-                <div className="mt-3 text-center">
-                  <div className={`text-sm font-bold ${currentStep >= idx ? 'text-slate-900' : 'text-slate-400'}`}>{step.title}</div>
-                  <div className="text-[10px] text-slate-500 hidden sm:block">{step.desc}</div>
-                </div>
-              </div>
-            ))}
-            <div className="absolute top-5 left-[12%] right-[12%] h-1 bg-slate-100 z-0">
-              <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${(currentStep / 3) * 100}%` }} />
-            </div>
-          </div>
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+      <div className="max-w-3xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-black text-slate-900">New Installment / Naya Khaata</h1>
+          <p className="text-sm text-slate-500 mt-1">Customer aur item ki poori details bharein</p>
         </div>
 
-        {/* ── Form ── */}
-        <form onSubmit={handleSubmit(onSubmit)} className="erp-card overflow-hidden min-h-[400px]">
-          <div className="p-6 md:p-8">
-            
-            {/* STEP 1: Customer */}
-            {currentStep === 0 && (
-              <div className="space-y-6 animate-fade-in max-w-2xl mx-auto py-4">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-bold text-slate-900">Naya Gahak (Customer)</h3>
-                  <p className="text-sm text-slate-500 mt-1">Gahak ki bunyadi maloomat darj karein.</p>
+        {/* Step indicators */}
+        <div className="flex items-center gap-0 mb-6 overflow-x-auto">
+          {visibleStepLabels.map((label, i) => {
+            const actualStep = form.isCashSale && i === 2 ? 3 : i
+            const active = step === actualStep
+            const done   = step > actualStep
+            return (
+              <div key={label} className="flex items-center">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${active ? 'bg-white/20' : ''}`}>
+                    {done ? <Check size={11} /> : i + 1}
+                  </span>
+                  {label}
                 </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <InputField label="Gahak ka Naam" name="customerName" placeholder="Muhammad Ali" {...fieldProps} />
-                  <InputField label="Walid ka Naam" name="fatherName" placeholder="Ahmad Khan" {...fieldProps} />
-                  <MaskedInput label="Shanakhti Card (CNIC)" name="cnic" placeholder="00000-0000000-0" formatter={formatCNIC} control={control} errors={errors} maxLength={15} />
-                  <MaskedInput label="Mobile Number" name="phone" placeholder="0300-0000000" formatter={formatPhone} control={control} errors={errors} maxLength={12} />
-                  <InputField label="Shehar" name="city" placeholder="Lahore" {...fieldProps} />
-                  <div className="md:col-span-2">
-                    <InputField label="Mukammal Pata (Address)" name="address" as="textarea" placeholder="Ghar ka mukammal pata..." {...fieldProps} />
-                  </div>
-                </div>
+                {i < visibleStepLabels.length - 1 && <ChevronRight size={16} className="text-slate-300 mx-1 flex-shrink-0" />}
               </div>
-            )}
+            )
+          })}
+        </div>
 
-            {/* STEP 2: Product */}
-            {currentStep === 1 && (
-              <div className="space-y-8 animate-fade-in">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Samaan Ki Qisam (Category)</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {CATEGORIES.map(cat => {
-                      const Icon = cat.icon
-                      const isSelected = selectedCategory === cat.id
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => handleCategorySelect(cat.id)}
-                          className={`p-4 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all duration-200 ${
-                            isSelected ? 'bg-blue-50 border-blue-600 text-blue-700 shadow-sm ring-1 ring-blue-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          <Icon size={24} strokeWidth={isSelected ? 2 : 1.5} />
-                          <span className={`text-xs font-medium text-center ${isSelected ? 'font-bold' : ''}`}>{cat.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+        {/* Form Card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+          <CurrentStep />
+        </div>
 
-                {selectedCategory && (
-                  <div className="pt-6 border-t border-slate-100 animate-slide-up">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Samaan Ki Tafseel</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {selectedCategory === 'motorcycle' ? (
-                        <>
-                          <InputField label="Company (Make)" name="brand" placeholder="e.g. Honda" {...fieldProps} />
-                          <InputField label="Model" name="model" placeholder="e.g. CD 70" {...fieldProps} />
-                          <InputField label="Color" name="color" {...fieldProps} />
-                          <InputField label="Engine Number" name="engineNo" {...fieldProps} />
-                          <InputField label="Chassis Number" name="chassisNo" {...fieldProps} />
-                          <InputField label="Registration Number" name="regNo" placeholder="Optional" {...fieldProps} />
-                          <InputField label="Distributor" name="distributor" placeholder="Select or type..." {...fieldProps} />
-                          <InputField label="Market Price" name="marketPrice" type="number" prefix="Rs." {...fieldProps} />
-                        </>
-                      ) : selectedCategory === 'car' ? (
-                        <>
-                          <InputField label="Make" name="brand" placeholder="e.g. Suzuki" {...fieldProps} />
-                          <InputField label="Model" name="model" placeholder="e.g. Alto VXR" {...fieldProps} />
-                          <InputField label="Year" name="year" placeholder="e.g. 2024" type="number" {...fieldProps} />
-                          <InputField label="Color" name="color" {...fieldProps} />
-                          <InputField label="Engine Number" name="engineNo" {...fieldProps} />
-                          <InputField label="Chassis Number" name="chassisNo" {...fieldProps} />
-                          <div className="md:col-span-2">
-                            <InputField label="Registration Number" name="regNo" placeholder="Optional" {...fieldProps} />
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <InputField label="Brand" name="brand" placeholder="e.g. Samsung" {...fieldProps} />
-                          <InputField label="Model" name="model" placeholder="e.g. Galaxy A54" {...fieldProps} />
-                          <InputField label="Color" name="color" placeholder="Optional" {...fieldProps} />
-                          <InputField label="Serial Number" name="serialNumber" placeholder="Optional" {...fieldProps} />
-                          <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700">Haisiyat (Condition)</label>
-                            <select {...register('condition')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm">
-                              <option value="new">Bilkul Naya</option>
-                              <option value="used">Istemaal Shuda</option>
-                            </select>
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 mt-8">Keemat (Pricing)</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-xl border border-slate-200">
-                      <InputField label="Dukaan Ki Khareed (Purchase Price)" name="ownerPurchasePrice" type="number" prefix="Rs." {...fieldProps} />
-                      <InputField label="Qistain Wali Keemat (Sale Price)" name="installmentPrice" type="number" prefix="Rs." {...fieldProps} />
-                      <div className="md:col-span-2 pt-2 flex items-center justify-between text-sm">
-                        <span className="text-slate-500 font-medium">Munafa (Profit):</span>
-                        <span className={`font-bold ${profitMargin > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(profitMargin)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* STEP 3: Schedule */}
-            {currentStep === 2 && (
-              <div className="space-y-8 animate-fade-in">
-                <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
-                  <span className="text-xs text-blue-600 font-bold uppercase tracking-wider">Kul Rakam (Total Price)</span>
-                  <div className="text-2xl font-black text-slate-900">{formatCurrency(wInstallmentPrice)}</div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-5">
-                    <InputField label="Peshgi Rakam (Advance Payment)" name="advancePayment" type="number" prefix="Rs." {...fieldProps} />
-                    <InputField label="Qiston Ki Tadad (No. of Installments)" name="installmentsCount" type="number" placeholder="e.g. 12" {...fieldProps} />
-                  </div>
-                  <div className="space-y-5">
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">Adaigi Ka Tareeqa (Schedule Type)</label>
-                      <select {...register('scheduleType')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm">
-                        <option value="daily">Rozana (Daily)</option>
-                        <option value="weekly">Hafta War (Weekly)</option>
-                        <option value="5-day">5 Din Baad</option>
-                        <option value="10-day">10 Din Baad</option>
-                        <option value="monthly">Mahana (Monthly)</option>
-                      </select>
-                    </div>
-                    <InputField label="Shuru Ki Tareekh (Start Date)" name="startDate" type="date" {...fieldProps} />
-                  </div>
-                </div>
-
-                {/* Live calculation preview */}
-                {watch('advancePayment') >= 0 && watch('installmentsCount') > 0 && (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <div className="text-xs text-slate-500 font-medium">Baqaya Rakam</div>
-                        <div className="font-bold text-slate-900">{formatCurrency(wInstallmentPrice - (watch('advancePayment') || 0))}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 font-medium">Qiston Ki Tadad</div>
-                        <div className="font-bold text-blue-600">{watch('installmentsCount') || 0}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-slate-500 font-medium">Ek Qist</div>
-                        <div className="font-bold text-emerald-600">{formatCurrency((wInstallmentPrice - (watch('advancePayment') || 0)) / (watch('installmentsCount') || 1))}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* STEP 4: Review */}
-            {currentStep === 3 && (
-              <div className="space-y-6 animate-fade-in">
-                <h3 className="text-lg font-bold text-slate-900 border-b pb-3">Tafseelat Ka Jaiza (Review)</h3>
-                <div className="bg-slate-50 p-6 rounded-xl space-y-6 text-sm">
-                  <div>
-                    <h4 className="font-semibold text-blue-600 mb-3 uppercase tracking-wide text-xs">Gahak Ki Maloomat</h4>
-                    <div className="grid grid-cols-2 gap-2 text-slate-700">
-                      <p><span className="text-slate-500">Naam:</span> <strong>{getValues('customerName')}</strong></p>
-                      <p><span className="text-slate-500">CNIC:</span> <strong>{getValues('cnic')}</strong></p>
-                      <p><span className="text-slate-500">Phone:</span> <strong>{getValues('phone')}</strong></p>
-                      <p><span className="text-slate-500">Shehar:</span> <strong>{getValues('city')}</strong></p>
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t border-slate-200">
-                    <h4 className="font-semibold text-blue-600 mb-3 uppercase tracking-wide text-xs">Samaan Ki Tafseel</h4>
-                    <div className="grid grid-cols-2 gap-2 text-slate-700">
-                      <p><span className="text-slate-500">Category:</span> <strong className="capitalize">{getValues('category')}</strong></p>
-                      <p><span className="text-slate-500">Samaan:</span> <strong>{getValues('brand')} {getValues('model')}</strong></p>
-                      <p><span className="text-slate-500">Khareed Keemat:</span> <strong>{formatCurrency(getValues('ownerPurchasePrice'))}</strong></p>
-                      <p><span className="text-slate-500">Sale Keemat:</span> <strong>{formatCurrency(wInstallmentPrice)}</strong></p>
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t border-slate-200">
-                    <h4 className="font-semibold text-blue-600 mb-3 uppercase tracking-wide text-xs">Qiston Ka Plan</h4>
-                    <div className="grid grid-cols-2 gap-2 text-slate-700">
-                      <p><span className="text-slate-500">Peshgi:</span> <strong>{formatCurrency(getValues('advancePayment'))}</strong></p>
-                      <p><span className="text-slate-500">Qiston Ki Tadad:</span> <strong>{getValues('installmentsCount')}</strong></p>
-                      <p><span className="text-slate-500">Tareeqa:</span> <strong className="capitalize">{getValues('scheduleType')}</strong></p>
-                      <p><span className="text-slate-500">Ek Qist:</span> <strong className="text-emerald-600">{formatCurrency((wInstallmentPrice - (getValues('advancePayment')||0)) / (getValues('installmentsCount')||1))}</strong></p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── Footer ── */}
-          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <button type="button" onClick={prevStep} disabled={currentStep === 0} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"><ChevronLeft size={18} /> Back</button>
-            <div className="flex gap-3">
-              {currentStep < 3 ? (
-                <button type="button" onClick={nextStep} className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-sm">Next Step <ChevronRight size={18} /></button>
-              ) : (
-                <button type="button" onClick={onSubmit} disabled={isSubmitting} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"><Save size={18} /> {isSubmitting ? 'Bana raha hai...' : 'Khatma Karein (Save)'}</button>
-              )}
-            </div>
-          </div>
-        </form>
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-4">
+          <button onClick={step === 0 ? () => navigate('/installments') : prev}
+            className="flex items-center gap-1.5 px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            <ChevronLeft size={16} /> {step === 0 ? 'Cancel' : 'Back'}
+          </button>
+          {step < (form.isCashSale ? 2 : 3) ? (
+            <button onClick={next}
+              className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+              Next <ChevronRight size={16} />
+            </button>
+          ) : (
+            <button onClick={submit} disabled={saving}
+              className="flex items-center gap-1.5 px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50">
+              {saving ? 'Saving...' : '✅ Submit / Jama Karein'}
+            </button>
+          )}
+        </div>
       </div>
-      )}
-    </PageWrapper>
+    </div>
   )
 }

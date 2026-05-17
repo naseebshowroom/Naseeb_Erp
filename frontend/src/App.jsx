@@ -16,11 +16,14 @@ import InventoryPage from '@/pages/inventory/InventoryPage';
 import DistributorsPage from '@/pages/distributors/DistributorsPage';
 import DistributorDetail from '@/pages/distributors/DistributorDetail';
 import WorkersPage from '@/pages/workers/WorkersPage';
+import WorkerReport from '@/pages/workers/WorkerReport';
 import CollectionsPage from '@/pages/collections/CollectionsPage';
 import WorkerDashboard from '@/pages/workers/WorkerDashboard';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import AgreementsPage from '@/pages/agreements/AgreementsPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
+import AssetsPage from '@/pages/assets/AssetsPage';
+import AssetHistory from '@/pages/assets/AssetHistory';
 import { useAuthStore } from '@/store/authStore';
 
 // Protected Route Wrapper
@@ -82,10 +85,13 @@ function App() {
           <Route path="distributors" element={<DistributorsPage />} />
           <Route path="distributors/:id" element={<DistributorDetail />} />
           <Route path="workers" element={<WorkersPage />} />
+          <Route path="workers/report" element={<WorkerReport />} />
           <Route path="collections" element={<CollectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="agreements" element={<AgreementsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="assets" element={<AssetsPage />} />
+          <Route path="assets/:id/history" element={<AssetHistory />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

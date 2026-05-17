@@ -624,3 +624,165 @@ export const saleReceiptHTML = (data) => {
   </div>`;
 };
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. CASH SALE RECEIPT
+// ═══════════════════════════════════════════════════════════════════════════════
+export const cashSaleReceiptHTML = (data) => {
+  const {
+    customerName = '', fatherName = '', cnic = '', phone = '',
+    address = '', date = '', serialNumber = '',
+    installmentPrice = 0, registrationFee = 0,
+    brand = '', model = '', color = '', engineNumber = '', chassisNumber = '',
+    investorName = '', khataNumber = '', isOwnerCopy = false,
+  } = data;
+  const f = (n) => `Rs. ${Math.round(Number(n) || 0).toLocaleString('en-PK')}`;
+  const total = Number(installmentPrice) + Number(registrationFee);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:'Times New Roman',serif;color:#1a1a6e;margin:0;padding:20px;}
+    .hdr{border-bottom:4px solid #1a1a6e;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
+    .badge{background:#1a1a6e;color:#fff;padding:3px 10px;font-size:12px;font-weight:700;letter-spacing:1px;display:inline-block;}
+    .title-box{text-align:center;margin:14px 0;}
+    .title-box span{border:2.5px solid #1a1a6e;padding:6px 44px;font-size:20px;font-weight:900;letter-spacing:2px;display:inline-block;}
+    .row{display:flex;gap:8px;margin-bottom:10px;align-items:baseline;}
+    .row label{font-weight:700;font-style:italic;min-width:140px;flex-shrink:0;font-size:13px;}
+    .row span{flex:1;border-bottom:1.5px solid #333;font-size:13px;font-weight:700;padding-bottom:2px;}
+    .total-box{background:#f0f0ff;border:2px solid #1a1a6e;padding:10px 16px;margin:14px 0;text-align:center;font-size:18px;font-weight:900;}
+    .note{background:#fff8e1;border-left:4px solid #f59e0b;padding:10px 14px;margin:14px 0;font-size:12px;}
+    .sig-block{margin-top:40px;display:flex;justify-content:space-between;}
+    .sig-line{border-top:1.5px solid #333;margin-top:36px;padding-top:6px;font-size:11px;color:#555;}
+  </style></head><body>
+  <div class="hdr">
+    <div><div class="badge">NASEEB</div><div style="font-size:11px;font-weight:700;">AUTOS &amp; SHOWROOM</div><div style="font-size:10px;color:#333;">Ph: 0333-7971303</div></div>
+    <div style="text-align:center;"><div style="font-size:13px;font-weight:900;text-transform:uppercase;">SALE RECEIPT (CASH)</div><div style="font-size:10px;color:#555;">نقد فروخت رسید</div></div>
+    <div style="text-align:right;font-size:12px;"><div><b>Date:</b> ${date}</div><div><b>Khata #:</b> ${khataNumber||'—'}</div><div><b>Sr.#:</b> ${serialNumber}</div></div>
+  </div>
+  <div class="title-box"><span>CASH SALE RECEIPT</span></div>
+  <div class="row"><label>Customer Name:</label><span>${customerName}</span></div>
+  <div class="row"><label>Father's Name:</label><span>${fatherName}</span></div>
+  <div class="row"><label>CNIC:</label><span>${cnic||'N/A'}</span></div>
+  <div class="row"><label>Phone:</label><span>${phone}</span></div>
+  <div class="row"><label>Address:</label><span>${address}</span></div>
+  <hr style="border:1.5px solid #1a1a6e;margin:14px 0;">
+  <div class="row"><label>Item:</label><span>${brand} ${model}${color?' — '+color:''}</span></div>
+  ${engineNumber?`<div class="row"><label>Engine #:</label><span>${engineNumber}</span></div>`:''}
+  ${chassisNumber?`<div class="row"><label>Chassis #:</label><span>${chassisNumber}</span></div>`:''}
+  <div class="total-box">Total Sale Price / کل قیمت: ${f(installmentPrice)}
+    ${registrationFee>0?`<div style="font-size:13px;margin-top:4px;">Registration Fee: ${f(registrationFee)}</div><div style="font-size:16px;margin-top:6px;border-top:1px solid #1a1a6e;padding-top:6px;">TOTAL PAID: ${f(total)}</div>`:''}
+  </div>
+  <div class="note">✅ Full payment received. No installments pending.<br><b>نقد رقم مکمل وصول ہو گئی۔ کوئی قسط باقی نہیں۔</b></div>
+  ${isOwnerCopy&&investorName?`<div style="font-size:11px;color:#666;text-align:right;">Investor: <b>${investorName}</b></div>`:''}
+  <div class="sig-block">
+    <div style="text-align:center;min-width:140px;"><div class="sig-line">Customer Signature<br>دستخط خریدار</div></div>
+    <div style="text-align:center;min-width:140px;"><div class="sig-line">For: NASEEB AUTOS &amp; SHOWROOM</div></div>
+  </div></body></html>`;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. CUSTOMER STATEMENT / KHATA PRINT
+// ═══════════════════════════════════════════════════════════════════════════════
+export const customerStatementHTML = (data) => {
+  const {
+    customerName='',fatherName='',cnic='',phone='',address='',
+    khataNumber='',date='',brand='',model='',color='',
+    engineNumber='',chassisNumber='',
+    installmentPrice=0,advanceAmount=0,perInstallmentAmount=0,
+    scheduleType='',investorName='',
+    schedule=[],
+    summary={totalPaid:0,totalMissed:0,totalPending:0,arrears:0},
+  } = data;
+  const f=(n)=>`Rs. ${Math.round(Number(n)||0).toLocaleString('en-PK')}`;
+  const icon=(s)=>s==='paid'?'✅ Paid':s==='missed'?'❌ MISSED':'🟡 Pending';
+  const clr=(s)=>s==='paid'?'#166534':s==='missed'?'#991b1b':'#92400e';
+  const bg=(s)=>s==='paid'?'#f0fdf4':s==='missed'?'#fef2f2':'#fffbeb';
+  const rows=schedule.map(s=>`<tr style="background:${bg(s.status)};">
+    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">${s.dueDate?new Date(s.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;text-align:center;">${f(s.status==='paid'?(s.paidAmount||perInstallmentAmount):perInstallmentAmount)}</td>
+    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;font-weight:700;color:${clr(s.status)};">${icon(s.status)}${s.status==='paid'&&s.paidDate?' — '+new Date(s.paidDate).toLocaleDateString('en-GB'):''}</td>
+    <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;color:#555;">${s.collectedBy?.name||''}</td>
+  </tr>`).join('');
+  const missedRows=schedule.filter(s=>s.status==='missed').map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:4px 0;"><span style="font-size:12px;color:#991b1b;font-weight:700;">❌ ${new Date(s.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span><span style="font-size:12px;font-weight:700;">${f(perInstallmentAmount)}</span></div>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:'Times New Roman',serif;color:#111;margin:0;padding:20px;font-size:13px;}
+    table{border-collapse:collapse;width:100%;}th{background:#e8eaf6;border:1px solid #1a1a6e;padding:8px;font-size:12px;}
+    .hdr{background:#1a1a6e;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0;}
+    .card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center;}
+    .card .v{font-size:15px;font-weight:900;margin-top:4px;}
+    .info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;}
+    .irow{display:flex;gap:6px;margin-bottom:6px;}
+    .irow label{font-weight:700;min-width:110px;color:#555;font-size:12px;}
+    .irow span{font-weight:700;font-size:12px;}
+    .sec{font-weight:900;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#1a1a6e;border-bottom:2px solid #1a1a6e;padding-bottom:4px;margin:16px 0 10px;}
+    .arr{background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px;margin:12px 0;}
+  </style></head><body>
+  <div class="hdr"><div><div style="font-size:18px;font-weight:900;">NASEEB AUTOS &amp; SHOWROOM</div><div style="font-size:11px;opacity:.8;">Ph: 0333-7971303 | Khuzdar</div></div><div style="text-align:right;"><div style="font-size:13px;font-weight:700;">CUSTOMER STATEMENT / KHATA</div><div style="font-size:11px;opacity:.8;">Date: ${date}</div></div></div>
+  <div class="info"><div>
+    <div class="irow"><label>Customer:</label><span>${customerName}</span></div>
+    <div class="irow"><label>Father:</label><span>${fatherName}</span></div>
+    <div class="irow"><label>Phone:</label><span>${phone}</span></div>
+    <div class="irow"><label>CNIC:</label><span>${cnic||'N/A'}</span></div>
+  </div><div>
+    <div class="irow"><label>Khata #:</label><span>${khataNumber||'—'}</span></div>
+    <div class="irow"><label>Item:</label><span>${brand} ${model}${color?' ('+color+')':''}</span></div>
+    ${engineNumber?`<div class="irow"><label>Engine #:</label><span>${engineNumber}</span></div>`:''}
+    ${chassisNumber?`<div class="irow"><label>Chassis #:</label><span>${chassisNumber}</span></div>`:''}
+  </div></div>
+  <div style="background:#f0f0ff;border:1.5px solid #1a1a6e;padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0;">
+    <div><div style="font-size:11px;color:#555;">Total Price</div><div style="font-size:16px;font-weight:900;color:#1a1a6e;">${f(installmentPrice)}</div></div>
+    <div><div style="font-size:11px;color:#555;">Advance</div><div style="font-size:15px;font-weight:700;">${advanceAmount>0?f(advanceAmount):'No Advance'}</div></div>
+    <div><div style="font-size:11px;color:#555;">Per Qist</div><div style="font-size:15px;font-weight:700;">${f(perInstallmentAmount)} (${scheduleType})</div></div>
+  </div>
+  <div class="sec">Summary</div>
+  <div class="grid4">
+    <div class="card"><div style="font-size:11px;color:#166534;">Paid</div><div class="v" style="color:#166534;">${f(summary.totalPaid)}</div></div>
+    <div class="card"><div style="font-size:11px;color:#991b1b;">Missed</div><div class="v" style="color:#991b1b;">${f(summary.totalMissed)}</div></div>
+    <div class="card"><div style="font-size:11px;color:#92400e;">Pending</div><div class="v" style="color:#92400e;">${f(summary.totalPending)}</div></div>
+    <div class="card"><div style="font-size:11px;color:#dc2626;">Arrears</div><div class="v" style="color:#dc2626;">${f(summary.arrears)}</div></div>
+  </div>
+  <div class="sec">Payment History</div>
+  <table><thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Collected By</th></tr></thead><tbody>${rows}</tbody></table>
+  ${missedRows?`<div class="arr"><div style="font-weight:900;color:#dc2626;font-size:13px;margin-bottom:8px;">BAQAYA TAREEKHAIN (MISSED DATES)</div>${missedRows}<div style="margin-top:8px;padding-top:8px;border-top:1px solid #dc2626;font-weight:900;color:#dc2626;">Total Baqaya: ${f(summary.arrears)}</div></div>`:''}
+  <div style="margin-top:20px;display:flex;justify-content:space-between;">
+    <div style="font-size:11px;color:#555;">Investor: ${investorName||'Owner'}</div>
+    <div style="text-align:center;min-width:160px;"><div style="border-top:1px solid #333;margin-top:36px;padding-top:6px;font-size:11px;">Owner Signature</div></div>
+  </div></body></html>`;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7. DISTRIBUTOR LETTER (Return / Purchase Confirmation)
+// ═══════════════════════════════════════════════════════════════════════════════
+export const distributorLetterHTML = (data) => {
+  const {
+    distributorName='',distributorAddress='',
+    brand='',model='',color='',engineNumber='',chassisNumber='',
+    dateSupplied='',unitPrice=0,date='',letterType='purchase',ownerName='Naseeb',
+  } = data;
+  const f=(n)=>`Rs. ${Math.round(Number(n)||0).toLocaleString('en-PK')}`;
+  const subject=letterType==='return'?'Vehicle Return / گاڑی واپسی':'Purchase Confirmation / خریداری';
+  const body=letterType==='return'
+    ?'We are returning the following vehicle to your stock. Please confirm receipt.'
+    :'We hereby confirm the purchase of the following vehicle from your dealership.';
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:'Times New Roman',serif;color:#1a1a6e;margin:0;padding:40px;font-size:14px;max-width:680px;}
+    .hdr{border-bottom:3px solid #1a1a6e;padding-bottom:12px;margin-bottom:24px;display:flex;justify-content:space-between;}
+    table{width:100%;border-collapse:collapse;margin:20px 0;}
+    td{padding:8px 12px;border:1px solid #1a1a6e;}
+    td:first-child{font-weight:700;width:140px;background:#f0f0ff;}
+  </style></head><body>
+  <div class="hdr"><div><div style="font-size:20px;font-weight:900;">NASEEB AUTOS &amp; SHOWROOM</div><div style="font-size:11px;color:#555;">Ph: 0333-7971303 | Khuzdar</div></div><div style="text-align:right;font-size:12px;">Date: <b>${date}</b></div></div>
+  <p><b>To:</b> ${distributorName}${distributorAddress?'<br><span style="color:#555;">'+distributorAddress+'</span>':''}</p>
+  <p style="font-size:15px;font-weight:700;border-bottom:1px solid #ddd;padding-bottom:8px;">Subject: ${subject}</p>
+  <p>${body}</p>
+  <table>
+    <tr><td>Brand</td><td><b>${brand}</b></td></tr>
+    <tr><td>Model</td><td><b>${model}</b></td></tr>
+    <tr><td>Color</td><td><b>${color||'—'}</b></td></tr>
+    <tr><td>Engine #</td><td><b>${engineNumber||'—'}</b></td></tr>
+    <tr><td>Chassis #</td><td><b>${chassisNumber||'—'}</b></td></tr>
+    <tr><td>Date Supplied</td><td><b>${dateSupplied?new Date(dateSupplied).toLocaleDateString('en-GB'):'—'}</b></td></tr>
+    <tr><td>Amount</td><td><b style="font-size:15px;">${f(unitPrice)}</b></td></tr>
+  </table>
+  <p style="font-size:12px;color:#555;">${letterType==='return'?'The customer has returned/defaulted and we are returning this vehicle per our agreement.':'This letter serves as purchase confirmation. Please keep for your records.'}</p>
+  <div style="margin-top:60px;text-align:right;"><p>Regards,</p><div style="margin-top:40px;border-top:1px solid #333;width:200px;display:inline-block;padding-top:6px;font-size:12px;">${ownerName}<br>NASEEB AUTOS &amp; SHOWROOM</div></div>
+  </body></html>`;
+};
