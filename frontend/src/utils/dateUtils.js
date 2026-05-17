@@ -54,7 +54,7 @@ export const isOverdue = (dueDate) => {
  */
 export const formatCurrency = (amount) => {
   if (amount === null || amount === undefined || isNaN(amount)) return 'Rs. 0';
-  return `Rs. ${Number(amount).toLocaleString('en-PK')}`;
+  return `Rs. ${Math.round(Number(amount)).toLocaleString('en-PK')}`;
 };
 
 /**

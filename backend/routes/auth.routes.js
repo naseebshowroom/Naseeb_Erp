@@ -5,9 +5,16 @@ import {
   refresh,
   logout,
   getMe,
-  changePassword
+  changePassword,
+  createUser,
+  getUsers,
+  updateUser,
+  deleteUser,
+  updateProfile,
+  uploadProfilePhoto
 } from '../controllers/auth.controller.js';
-import { protect } from '../middleware/auth.middleware.js';
+import upload from '../middleware/upload.middleware.js';
+import { protect, authorize } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -28,11 +35,19 @@ router.post('/refresh', refresh);
 router.post('/logout', logout);
 
 router.get('/me', protect, getMe);
+router.put('/profile', protect, updateProfile);
+router.post('/profile/photo', protect, upload.single('photo'), uploadProfilePhoto);
 
 router.put('/change-password', [
   protect,
   body('currentPassword').notEmpty().withMessage('Current password is required'),
   body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
 ], validateRequest, changePassword);
+
+// Worker / user management routes
+router.post('/register',    protect, authorize('owner', 'manager'), createUser);
+router.get('/users',        protect, authorize('owner', 'manager'), getUsers);
+router.put('/users/:id',    protect, authorize('owner', 'manager'), updateUser);
+router.delete('/users/:id', protect, authorize('owner'),            deleteUser);
 
 export default router;

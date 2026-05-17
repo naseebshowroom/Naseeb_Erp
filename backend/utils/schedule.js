@@ -29,9 +29,11 @@ export const generatePaymentSchedule = (startDate, count, scheduleType) => {
       case 'weekly':
         currentDate.setDate(currentDate.getDate() + 7);
         break;
+      case '5-day':
       case '5day':
         currentDate.setDate(currentDate.getDate() + 5);
         break;
+      case '10-day':
       case '10day':
         currentDate.setDate(currentDate.getDate() + 10);
         break;

@@ -1,7 +1,8 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { getSettings, updateSettings } from '../controllers/settings.controller.js';
+import { getSettings, updateSettings, uploadLogo } from '../controllers/settings.controller.js';
 import { protect, authorize } from '../middleware/auth.middleware.js';
+import upload from '../middleware/upload.middleware.js';
 
 const router = express.Router();
 
@@ -27,5 +28,7 @@ router.route('/')
     validateRequest,
     updateSettings
   );
+
+router.post('/logo', protect, authorize('owner'), upload.single('logo'), uploadLogo);
 
 export default router;

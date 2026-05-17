@@ -147,3 +147,123 @@ export const changePassword = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
+// @desc    Create a new user (worker/manager) — owner only
+// @route   POST /api/auth/register
+// @access  Private (owner)
+export const createUser = async (req, res) => {
+  try {
+    const { name, username, password, role, phone, cnic } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: 'Username aur password zaroori hain' });
+    }
+    const existing = await User.findOne({ username: username.toLowerCase() });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Ye username pehle se maujood hai' });
+    }
+    const user = await User.create({
+      fullName: name,
+      username: username.toLowerCase(),
+      password,
+      role: role || 'worker',
+      phone,
+      cnic,
+      createdBy: req.user.id,
+    });
+    res.status(201).json({
+      success: true,
+      data: { _id: user._id, name: user.fullName, username: user.username, role: user.role }
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get all users (workers/managers)
+// @route   GET /api/auth/users
+// @access  Private (owner/manager)
+export const getUsers = async (req, res) => {
+  try {
+    const users = await User.find({ role: { $in: ['worker', 'manager'] } })
+      .select('-password')
+      .sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: users });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
+// @desc    Update a user (worker/manager)
+// @route   PUT /api/auth/users/:id
+// @access  Private (owner/manager)
+export const updateUser = async (req, res) => {
+  try {
+    const { fullName, phone, role, isActive } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { fullName, phone, role, isActive },
+      { new: true, runValidators: true }
+    ).select('-password');
+    if (!user) return res.status(404).json({ success: false, message: 'Worker nahi mila' });
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete a user (worker/manager) — owner only
+// @route   DELETE /api/auth/users/:id
+// @access  Private (owner)
+export const deleteUser = async (req, res) => {
+  try {
+    // Prevent deleting yourself
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ success: false, message: 'Aap apna khud ka account delete nahi kar sakte' });
+    }
+    const user = await User.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'Worker nahi mila' });
+    res.status(200).json({ success: true, message: 'Account delete ho gaya' });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+export const updateProfile = async (req, res) => {
+  try {
+    const { fullName, phone, email } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { fullName, phone, email },
+      { new: true, runValidators: true }
+    ).select('-password');
+    res.json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// @desc    Upload profile photo
+// @route   POST /api/auth/profile/photo
+// @access  Private
+export const uploadProfilePhoto = async (req, res) => {
+  try {
+    if (!req.file && !req.files) {
+      return res.status(400).json({ success: false, message: 'Please upload a file' });
+    }
+    
+    // Cloudinary path is usually in req.file.path or req.files.photo[0].path
+    const photoUrl = req.file?.path || (req.files?.photo && req.files.photo[0]?.path);
+    
+    if (!photoUrl) {
+       return res.status(400).json({ success: false, message: 'Photo upload failed' });
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.id, { photoUrl }, { new: true }).select('-password');
+    res.json({ success: true, data: user });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+

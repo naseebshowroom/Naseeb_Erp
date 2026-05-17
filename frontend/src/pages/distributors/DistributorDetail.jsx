@@ -1,71 +1,144 @@
-import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
-  Building2, Phone, MapPin, Package, 
-  Wallet, CheckCircle2, AlertCircle, Edit, ArrowUpRight
+  Building2, Phone, MapPin, Package, CheckCircle2,
+  Wallet, Edit, ArrowUpRight, RefreshCw, X, CreditCard, CalendarDays, Tag
 } from 'lucide-react'
 import PageWrapper from '@/components/ui/PageWrapper'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import distributorService from '@/services/distributorService'
+import { handleApiError } from '@/utils/errorHandler'
+import toast from 'react-hot-toast'
+import { useForm, useFieldArray } from 'react-hook-form'
 
-// ── Dummy Data ─────────────────────────────────────────────
-const DIST_DATA = {
-  id: 1,
-  name: 'Ali Khan',
-  company: 'Ali Traders',
-  phone: '0300-1122334',
-  address: 'Main Auto Market, Multan',
-  cnic: '36302-1234567-1',
-  
-  financials: {
-    totalSuppliedValue: 1200000,
-    amountPaid: 950000,
-    balanceOwed: 250000,
-  },
-  
-  supplyHistory: [
-    { id: 101, date: '2026-05-10', item: 'Honda CD 70', qty: 5, unitPrice: 155000, total: 775000, status: 'partial' },
-    { id: 102, date: '2026-04-15', item: 'Honda CG 125', qty: 2, unitPrice: 212500, total: 425000, status: 'paid' },
-  ],
-
-  itemsGivenOut: [
-    { id: 501, item: 'Honda CD 70', engineNo: 'E-12345', customer: 'Muhammad Asif', date: '2026-05-11' },
-    { id: 502, item: 'Honda CD 70', engineNo: 'E-67890', customer: 'Tariq Mehmood', date: '2026-05-12' },
-    { id: 503, item: 'Honda CG 125', engineNo: 'E-54321', customer: 'Sana Bibi', date: '2026-04-16' },
-  ]
-}
+const INPUT = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-black transition-colors';
 
 export default function DistributorDetail() {
   const { id } = useParams()
-  const data = DIST_DATA // In reality, fetch by id
-  
+  const navigate = useNavigate()
+  const [data, setData] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isPaying, setIsPaying] = useState(false)
+  const [payModalOpen, setPayModalOpen] = useState(false)
+  const [payAmount, setPayAmount] = useState('')
+  const [payDate, setPayDate]     = useState(() => new Date().toISOString().split('T')[0])
+  const [payNotes, setPayNotes]   = useState('')
+  const [activeTab, setActiveTab] = useState('supply')
+
+  const [supplyModalOpen, setSupplyModalOpen] = useState(false)
+  const [isSupplying, setIsSupplying] = useState(false)
+
+  const { register, control, handleSubmit, reset } = useForm({
+    defaultValues: {
+      items: [{ description: '', quantity: 1, unitPrice: 0 }]
+    }
+  })
+
+  const { fields, append, remove } = useFieldArray({ control, name: 'items' })
+
+  const fetchDetail = async () => {
+    setIsLoading(true)
+    try {
+      const res = await distributorService.getDistributor(id)
+      if (res.success) setData(res.data)
+    } catch (err) {
+      handleApiError(err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDetail()
+  }, [id])
+
+  const handlePayment = async (e) => {
+    e.preventDefault()
+    if (!payAmount || Number(payAmount) <= 0) return
+    
+    setIsPaying(true)
+    try {
+      await distributorService.recordPayment(id, {
+        amount: Number(payAmount),
+        paymentDate: payDate,
+        notes: payNotes,
+      })
+      toast.success('Adayigi record ho gayi!')
+      setPayModalOpen(false)
+      setPayAmount('')
+      setPayNotes('')
+      setPayDate(new Date().toISOString().split('T')[0])
+      fetchDetail()
+    } catch (err) {
+      handleApiError(err)
+    } finally {
+      setIsPaying(false)
+    }
+  }
+
+  const handleSupply = async (formData) => {
+    setIsSupplying(true)
+    try {
+      await distributorService.recordSupply(id, formData)
+      toast.success('Supply/Invoice record ho gayi!')
+      setSupplyModalOpen(false)
+      reset()
+      fetchDetail()
+    } catch (err) {
+      handleApiError(err)
+    } finally {
+      setIsSupplying(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <PageWrapper title="Distributor Tafseel" breadcrumbs={[{ label: 'Distributors', to: '/distributors' }, { label: 'Loading...' }]}>
+        <div className="flex justify-center items-center h-64 text-slate-500 font-medium">Data load ho raha hai...</div>
+      </PageWrapper>
+    )
+  }
+
+  if (!data) {
+    return (
+      <PageWrapper title="Distributor Tafseel" breadcrumbs={[{ label: 'Distributors', to: '/distributors' }, { label: 'Not Found' }]}>
+        <div className="flex justify-center items-center h-64 text-red-500 font-medium">Distributor nahi mila.</div>
+      </PageWrapper>
+    )
+  }
+
   return (
     <PageWrapper 
-      title={data.company}
+      title={data.companyName}
       breadcrumbs={[{ label: 'Distributors', to: '/distributors' }, { label: data.name }]}
       actions={
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-50 transition-colors shadow-sm">
-            <Edit size={16} /> Edit Details
+          <button 
+            onClick={() => setSupplyModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:text-black hover:border-black transition-colors shadow-sm"
+          >
+            <Package size={16} /> Supply Aayi
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition-colors shadow-sm">
-            <Wallet size={16} /> Record Payment
+          <button 
+            onClick={() => setPayModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm"
+          >
+            <Wallet size={16} /> Adayigi Darj Karein
           </button>
         </div>
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* ── Left Column: Profile & Financials ── */}
+        {/* ── Profile & Financials ── */}
         <div className="lg:col-span-1 space-y-6">
-          
-          <div className="erp-card p-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-blue-50 to-white"></div>
-            <div className="w-16 h-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center mb-4 relative z-10 shadow-sm">
-              <Building2 size={32} />
+          <div className="erp-card p-6 relative overflow-hidden bg-white">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-900 flex items-center justify-center mb-4 relative z-10 shadow-sm font-bold text-2xl">
+              {data.companyName.charAt(0)}
             </div>
-            <h2 className="text-xl font-bold text-slate-900">{data.company}</h2>
-            <p className="text-sm font-medium text-blue-600 mb-4">{data.name}</p>
+            <h2 className="text-xl font-black text-slate-900">{data.companyName}</h2>
+            <p className="text-sm font-bold text-slate-500 mb-4">{data.name}</p>
             
             <div className="space-y-3 text-sm border-t border-slate-100 pt-4">
               <div className="flex items-center gap-3 text-slate-600">
@@ -74,110 +147,258 @@ export default function DistributorDetail() {
               </div>
               <div className="flex items-start gap-3 text-slate-600">
                 <MapPin size={16} className="text-slate-400 shrink-0 mt-0.5" />
-                <span className="leading-tight">{data.address}</span>
+                <span className="leading-tight">{data.address || 'Address nahi hai'}</span>
               </div>
             </div>
           </div>
 
-          <div className={`erp-card p-6 text-white ${data.financials.balanceOwed > 0 ? 'bg-gradient-to-br from-red-900 to-red-800' : 'bg-gradient-to-br from-emerald-900 to-emerald-800'}`}>
+          <div className={`erp-card p-6 text-white ${data.financials.balance > 0 ? 'bg-black' : 'bg-emerald-600'}`}>
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Wallet className="opacity-70" size={20} /> Outstanding Balance
+              <Wallet className="opacity-70" size={20} /> Baqaya Rakam
             </h3>
             <div className="space-y-4">
-              <div className="bg-white/10 p-4 rounded-xl border border-white/10 backdrop-blur-sm">
-                <span className="block text-white/60 text-xs uppercase tracking-wider mb-1">Payable to Distributor</span>
-                <span className="text-3xl font-black">{formatCurrency(data.financials.balanceOwed)}</span>
+              <div className="bg-white/10 p-4 rounded-xl border border-white/10">
+                <span className="block text-white/60 text-xs uppercase font-bold tracking-wider mb-1">Payable Balance</span>
+                <span className="text-3xl font-black">{formatCurrency(data.financials.balance)}</span>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <span className="block text-white/60 text-[10px] uppercase tracking-wider mb-1">Total Supplied</span>
-                  <span className="font-bold">{formatCurrency(data.financials.totalSuppliedValue)}</span>
+                  <span className="block text-white/60 text-[10px] uppercase font-bold tracking-wider mb-1">Kul Maal</span>
+                  <span className="font-bold">{formatCurrency(data.financials.totalSupplied)}</span>
                 </div>
                 <div>
-                  <span className="block text-white/60 text-[10px] uppercase tracking-wider mb-1">Total Paid</span>
-                  <span className="font-bold">{formatCurrency(data.financials.amountPaid)}</span>
+                  <span className="block text-white/60 text-[10px] uppercase font-bold tracking-wider mb-1">Kul Adayigi</span>
+                  <span className="font-bold">{formatCurrency(data.financials.totalPaid)}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── Right Column: History & Track ── */}
+        {/* ── History & Details ── */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Supply History Table */}
           <div className="erp-card overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Package className="text-blue-600" size={20} /> Supply History (Invoices)
-              </h3>
+            <div className="p-4 border-b border-slate-200">
+              <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                {[{id:'supply',label:'Supply History',icon:Package},{id:'payments',label:'Payment History',icon:CreditCard}].map(t => (
+                  <button key={t.id} onClick={() => setActiveTab(t.id)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-bold rounded-lg transition-all ${
+                      activeTab === t.id ? 'bg-white text-black shadow-sm' : 'text-slate-500 hover:text-black'
+                    }`}>
+                    <t.icon size={14}/>{t.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="overflow-x-auto">
+              {activeTab === 'supply' ? (
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-3">Date</th>
-                    <th className="px-6 py-3">Item Provided</th>
-                    <th className="px-6 py-3 text-center">Qty</th>
-                    <th className="px-6 py-3 text-right">Total Invoice</th>
-                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3 text-xs uppercase tracking-wider">Tareekh</th>
+                    <th className="px-6 py-3 text-xs uppercase tracking-wider">Description</th>
+                    <th className="px-6 py-3 text-xs uppercase tracking-wider">Category</th>
+                    <th className="px-6 py-3 text-right text-xs uppercase tracking-wider">Total Invoice</th>
+                    <th className="px-6 py-3 text-right text-xs uppercase tracking-wider">Baqaya</th>
+                    <th className="px-6 py-3 text-center text-xs uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.supplyHistory.map((supply) => (
-                    <tr key={supply.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-slate-900">{formatDate(supply.date)}</td>
-                      <td className="px-6 py-4 text-slate-600">{supply.item}</td>
-                      <td className="px-6 py-4 text-center font-bold">{supply.qty}</td>
-                      <td className="px-6 py-4 text-right font-bold text-slate-900">{formatCurrency(supply.total)}</td>
-                      <td className="px-6 py-4">
-                        <StatusBadge 
-                          status={supply.status === 'paid' ? 'completed' : supply.status === 'partial' ? 'active' : 'pending'} 
-                          label={supply.status} 
-                          size="sm" 
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {data.supplyHistory && data.supplyHistory.length > 0 ? (
+                    data.supplyHistory.map((supply) => (
+                      <tr key={supply._id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-slate-900">{formatDate(supply.invoiceDate || supply.createdAt)}</td>
+                        <td className="px-6 py-4 text-slate-600">
+                          {supply.items.map(i => `${i.quantity}x ${i.description}`).join(', ')}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg capitalize">
+                            {supply.category || 'General'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right font-bold text-slate-900">{formatCurrency(supply.totalAmount)}</td>
+                        <td className="px-6 py-4 text-right font-bold text-black">{formatCurrency(supply.balance)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <StatusBadge 
+                            status={supply.status === 'paid' ? 'completed' : supply.status === 'partial' ? 'active' : 'pending'} 
+                            label={supply.status === 'paid' ? 'Paid' : supply.status === 'partial' ? 'Partial' : 'Pending'} 
+                            size="sm" 
+                          />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-400">Abhi tak koi supply history nahi hai.</td></tr>
+                  )}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          {/* Given out to customers tracker */}
-          <div className="erp-card overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <ArrowUpRight className="text-emerald-600" size={20} /> Items Assigned to Customers
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">Track which specific items from this distributor went to which customer.</p>
-            </div>
-            <div className="overflow-x-auto">
+              ) : (
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                   <tr>
-                    <th className="px-6 py-3">Date Assigned</th>
-                    <th className="px-6 py-3">Item</th>
-                    <th className="px-6 py-3">Engine / Serial No.</th>
-                    <th className="px-6 py-3">Customer</th>
+                    <th className="px-6 py-3 text-xs uppercase tracking-wider">Adayigi Tareekh</th>
+                    <th className="px-6 py-3 text-right text-xs uppercase tracking-wider">Rakam</th>
+                    <th className="px-6 py-3 text-xs uppercase tracking-wider">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.itemsGivenOut.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 text-slate-600">{formatDate(item.date)}</td>
-                      <td className="px-6 py-4 font-bold text-slate-900">{item.item}</td>
-                      <td className="px-6 py-4 font-mono text-slate-500">{item.engineNo}</td>
-                      <td className="px-6 py-4 font-medium text-blue-600 hover:underline cursor-pointer">{item.customer}</td>
-                    </tr>
-                  ))}
+                  {data.paymentHistory && data.paymentHistory.length > 0 ? (
+                    data.paymentHistory.map((p, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-2">
+                          <CalendarDays size={14} className="text-slate-400"/>
+                          {formatDate(p.paymentDate || p.date || p.createdAt)}
+                        </td>
+                        <td className="px-6 py-4 text-right font-black text-black">{formatCurrency(p.amount)}</td>
+                        <td className="px-6 py-4 text-slate-500 text-xs">{p.notes || '—'}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan="3" className="px-6 py-8 text-center text-slate-400">Abhi tak koi adayigi record nahi hai.</td></tr>
+                  )}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
-
         </div>
       </div>
+
+      {/* ── Payment Modal ── */}
+      {payModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-slate-900">Adayigi Record Karein</h2>
+              <button onClick={() => setPayModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handlePayment} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Adayigi Ki Rakam (PKR) *</label>
+                <input 
+                  type="number"
+                  required
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-black text-lg font-black"
+                  placeholder="Rakam darj karein..."
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Adayigi Ki Tareekh *</label>
+                <div className="relative">
+                  <CalendarDays size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="date"
+                    required
+                    value={payDate}
+                    onChange={(e) => setPayDate(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Notes (Ikhtyari)</label>
+                <textarea
+                  value={payNotes}
+                  onChange={(e) => setPayNotes(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-black text-sm"
+                  placeholder="Koi zaroori baat..."
+                />
+              </div>
+              <button 
+                type="submit"
+                disabled={isPaying}
+                className="w-full py-2.5 bg-black text-white font-bold rounded-xl hover:bg-slate-800 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {isPaying ? 'Processing...' : 'Adayigi Darj Karein'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Supply Modal ── */}
+      {supplyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0">
+              <h2 className="text-base font-bold text-slate-900">Nayi Supply (Invoice) Darj Karein</h2>
+              <button onClick={() => { setSupplyModalOpen(false); reset() }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit(handleSupply)} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 bg-slate-50/50">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="flex gap-3 items-end p-4 bg-white border border-slate-200 rounded-xl relative group">
+                    <div className="flex-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Tafseel (Item Name)</label>
+                      <input
+                        {...register(`items.${index}.description`, { required: true })}
+                        placeholder="Maslan: Honda CD70 / Samsung Fridge"
+                        className={INPUT}
+                      />
+                    </div>
+                    <div className="w-28 shrink-0">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Category</label>
+                      <select {...register(`items.${index}.category`)} className={INPUT}>
+                        <option value="motorcycle">Motorcycle</option>
+                        <option value="electronics">Electronics</option>
+                        <option value="car">Car</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div className="w-24 shrink-0">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Tadaad</label>
+                      <input
+                        type="number"
+                        {...register(`items.${index}.quantity`, { required: true, min: 1 })}
+                        className={INPUT}
+                      />
+                    </div>
+                    <div className="w-32 shrink-0">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Qeemat (1 Pcs)</label>
+                      <input
+                        type="number"
+                        {...register(`items.${index}.unitPrice`, { required: true, min: 1 })}
+                        className={INPUT}
+                      />
+                    </div>
+                    {fields.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => remove(index)}
+                        className="w-10 h-10 flex items-center justify-center bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors shrink-0"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                
+                <button
+                  type="button"
+                  onClick={() => append({ description: '', quantity: 1, unitPrice: 0 })}
+                  className="w-full py-2 bg-white border border-dashed border-slate-300 text-slate-600 font-bold rounded-xl hover:border-black hover:text-black transition-colors"
+                >
+                  + Aur Samaan Shamil Karein
+                </button>
+              </div>
+              <div className="p-5 border-t border-slate-100 shrink-0">
+                <button
+                  type="submit"
+                  disabled={isSupplying}
+                  className="w-full py-2.5 bg-black text-white font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  {isSupplying ? 'Processing...' : 'Invoice Save Karein'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </PageWrapper>
   )
 }

@@ -63,35 +63,61 @@ export const getInstallmentById = async (req, res) => {
 // @access  Private
 export const createInstallment = async (req, res) => {
   try {
-    const {
-      customer, category, totalInstallments, scheduleType, startDate, 
-      advanceAmount, installmentPrice // Need to destructure these to ensure schedule generates correctly
-    } = req.body;
+    let { customer, distributor, ...rest } = req.body;
 
-    // 1. Verify customer exists
-    const customerExists = await Customer.findById(customer);
-    if (!customerExists) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
+    // If customer is an object (inline creation from wizard), create or find customer
+    if (customer && typeof customer === 'object' && !customer._id) {
+      const existingCustomer = await Customer.findOne({ cnic: customer.cnic });
+      if (existingCustomer) {
+        customer = existingCustomer._id;
+      } else {
+        const newCustomer = await Customer.create({
+          fullName:   customer.fullName,
+          fatherName: customer.fatherName,
+          cnic:       customer.cnic,
+          phone:      customer.phone,
+          city:       customer.city,
+          address:    customer.address,
+          guarantors: [],
+          createdBy:  req.user.id,
+        });
+        customer = newCustomer._id;
+      }
     }
 
-    // 2. Generate Payment Schedule
+    // Verify customer exists
+    const customerExists = await Customer.findById(customer);
+    if (!customerExists) {
+      return res.status(404).json({ success: false, message: 'Gahak nahi mila' });
+    }
+
+    // Only pass distributor if it looks like a valid ObjectId
+    const isValidObjectId = (v) => v && /^[a-f\d]{24}$/i.test(String(v));
+
+    // Generate Payment Schedule
+    const { totalInstallments, scheduleType, startDate } = rest;
     const paymentSchedule = generatePaymentSchedule(startDate, totalInstallments, scheduleType);
 
-    // 3. Create Installment record
     const installmentData = {
-      ...req.body,
+      ...rest,
+      customer,
       paymentSchedule,
-      createdBy: req.user.id
+      createdBy: req.user.id,
+      ...(isValidObjectId(distributor) ? { distributor } : {}),
     };
 
     const installment = await Installment.create(installmentData);
-
-    // TODO: Update Distributor stock here if applicable
-
-    // 4. Update Customer record (just an architectural consideration, normally we'd just query installments where customer=id)
-
     res.status(201).json({ success: true, data: installment });
   } catch (error) {
+    console.error('[createInstallment]', error);
+    // Return the real Mongoose validation messages
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ success: false, message: messages.join(' | '), error: error.message });
+    }
+    if (error.code === 11000) {
+      return res.status(400).json({ success: false, message: 'Duplicate entry detected', error: error.message });
+    }
     res.status(400).json({ success: false, message: 'Validation Error', error: error.message });
   }
 };
@@ -155,7 +181,7 @@ export const getSummaryStats = async (req, res) => {
           totalNearCompletion: { $sum: { $cond: [{ $eq: ["$status", "near_completion"] }, 1, 0] } },
           totalExpectedRevenue: { $sum: "$installmentPrice" },
           totalCollected: { $sum: { $add: ["$advanceAmount", "$totalPaid"] } },
-          totalOutstanding: { $sum: { $subtract: ["$remainingAmount", "$totalPaid"] } },
+          totalOutstanding: { $sum: "$remainingAmount" },
           totalProfitExpected: { $sum: "$profitMargin" }
         }
       }
@@ -265,13 +291,13 @@ export const getVasooliList = async (req, res) => {
       },
       {
         $addFields: {
-          expectedUpToToday: { $multiply: [{ $size: "$pastAndTodaySchedules" }, "$perInstallmentAmount"] },
+          expectedUpToToday: { $round: [{ $multiply: [{ $size: "$pastAndTodaySchedules" }, "$perInstallmentAmount"] }, 0] },
           isDueToday: { $gt: [{ $size: "$todaySchedules" }, 0] }
         }
       },
       {
         $addFields: {
-          cumulativeDue: { $subtract: ["$expectedUpToToday", "$totalPaid"] }
+          cumulativeDue: { $round: [{ $subtract: ["$expectedUpToToday", "$totalPaid"] }, 0] }
         }
       },
       // Keep only those who owe money
@@ -281,6 +307,7 @@ export const getVasooliList = async (req, res) => {
           customer: 1, category: 1, brand: 1, model: 1,
           perInstallmentAmount: 1, remainingAmount: 1, totalPaid: 1,
           cumulativeDue: 1, isDueToday: 1,
+          paymentSchedule: 1,
           daysOverdue: {
             $floor: {
               $divide: [

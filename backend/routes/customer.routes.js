@@ -6,7 +6,9 @@ import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
-  getCustomerSummary
+  getCustomerSummary,
+  searchCustomers,
+  getOverdueCustomers
 } from '../controllers/customer.controller.js';
 import { protect, authorize } from '../middleware/auth.middleware.js';
 import upload from '../middleware/upload.middleware.js';
@@ -44,6 +46,9 @@ router.use(protect);
 router.route('/')
   .get(getCustomers)
   .post(uploadFields, customerValidationRules, validateRequest, createCustomer);
+
+router.get('/search', searchCustomers);
+router.get('/overdue', getOverdueCustomers);
 
 router.route('/:id')
   .get(

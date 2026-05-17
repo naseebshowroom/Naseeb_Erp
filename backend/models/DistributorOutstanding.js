@@ -15,6 +15,12 @@ const distributorOutstandingSchema = new mongoose.Schema({
     required: true
   },
   items: [itemSchema],
+  payments: [{
+    amount:      { type: Number, required: true },
+    paymentDate: { type: Date, default: Date.now },
+    notes:       { type: String, default: '' },
+    recordedAt:  { type: Date, default: Date.now },
+  }],
   totalAmount: {
     type: Number,
     required: true,

@@ -55,3 +55,33 @@ export const updateSettings = async (req, res) => {
     res.status(400).json({ success: false, message: 'Validation Error', error: error.message });
   }
 };
+
+// @desc    Upload shop logo
+// @route   POST /api/settings/logo
+// @access  Private (Owner only)
+export const uploadLogo = async (req, res) => {
+  try {
+    if (!req.file && !req.files) {
+      return res.status(400).json({ success: false, message: 'Please upload a logo file' });
+    }
+    
+    const logoUrl = req.file?.path || (req.files?.logo && req.files.logo[0]?.path);
+    
+    if (!logoUrl) {
+       return res.status(400).json({ success: false, message: 'Logo upload failed' });
+    }
+
+    let settings = await ShopSettings.findOne();
+    if (settings) {
+      settings.logoUrl = logoUrl;
+      await settings.save();
+    } else {
+      settings = await ShopSettings.create({ logoUrl });
+    }
+
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+

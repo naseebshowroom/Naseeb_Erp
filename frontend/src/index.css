@@ -98,9 +98,47 @@
   .status-inactive  { @apply bg-slate-100 text-slate-500; }
 }
 
+/* ── Agreement Fonts ── */
+.urdu-text {
+  font-family: 'Noto Nastaliq Urdu', serif;
+  direction: rtl;
+  unicode-bidi: embed;
+  line-height: 2.4;
+  font-size: 13px;
+}
+.urdu-heading {
+  font-family: 'Noto Nastaliq Urdu', serif;
+  direction: rtl;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 2;
+}
+.english-text {
+  font-family: 'Times New Roman', Georgia, serif;
+  direction: ltr;
+}
+
 /* ── Print styles (for receipts/agreements) ── */
 @media print {
+  body * { visibility: hidden !important; }
+  #electronics-agreement, #electronics-agreement *,
+  #motorcycle-agreement, #motorcycle-agreement *,
+  #sale-receipt, #sale-receipt * { 
+    visibility: visible !important; 
+  }
+  #electronics-agreement,
+  #motorcycle-agreement,
+  #sale-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 210mm;
+    background: white !important;
+    color: black !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
   .no-print { display: none !important; }
-  .print-only { display: block !important; }
-  body { background: white !important; font-size: 12px; }
 }

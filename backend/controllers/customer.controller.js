@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Customer from '../models/Customer.js';
 
 // @desc    Get all customers (with pagination, search, filter)
@@ -28,10 +29,44 @@ export const getCustomers = async (req, res) => {
     }
 
     const total = await Customer.countDocuments(query);
-    const customers = await Customer.find(query)
-      .sort({ createdAt: -1 })
-      .skip(startIndex)
-      .limit(limit);
+    
+    // Use aggregation to join with installments and get active product categories
+    const customers = await Customer.aggregate([
+      { $match: query },
+      { $sort: { createdAt: -1 } },
+      { $skip: startIndex },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'installments',
+          localField: '_id',
+          foreignField: 'customer',
+          as: 'installments'
+        }
+      },
+      {
+        $addFields: {
+          activeCategories: {
+            $reduce: {
+              input: "$installments",
+              initialValue: [],
+              in: {
+                $cond: [
+                  { $and: [{ $ne: ["$$this.isDeleted", true] }, { $ne: ["$$this.status", "completed"] }] },
+                  { $setUnion: ["$$value", ["$$this.category"]] },
+                  "$$value"
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          installments: 0 // Remove the full installments array to keep payload small
+        }
+      }
+    ]);
 
     res.status(200).json({
       success: true,
@@ -54,18 +89,26 @@ export const getCustomers = async (req, res) => {
 // @access  Private
 export const getCustomerById = async (req, res) => {
   try {
-    // We will populate installments and payments later when those models are built
     const customer = await Customer.findById(req.params.id);
-    
     if (!customer) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
+      return res.status(404).json({ success: false, message: 'Gahak nahi mila' });
     }
-    
-    res.status(200).json({ success: true, data: customer });
+
+    // Fetch associated data
+    const [installments, payments] = await Promise.all([
+      mongoose.model('Installment').find({ customer: customer._id, isDeleted: false }),
+      mongoose.model('Payment').find({ customer: customer._id }).populate('installment').sort({ paymentDate: -1 })
+    ]);
+
+    res.status(200).json({ 
+      success: true, 
+      data: {
+        ...customer._doc,
+        installments,
+        payments
+      } 
+    });
   } catch (error) {
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
-    }
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
   }
 };
@@ -164,16 +207,80 @@ export const getCustomerSummary = async (req, res) => {
     const customer = await Customer.findById(req.params.id);
     if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
 
-    // TODO: Connect to actual Installment and Payment models once built.
-    // For now, return mock values matching the frontend expectations.
+    const Installment = mongoose.model('Installment');
+    const Payment = mongoose.model('Payment');
+
+    const installments = await Installment.find({ customer: req.params.id, isDeleted: false });
+    
+    let totalInstallments = installments.length;
+    let totalPaid = 0;
+    let remainingBalance = 0;
+
+    installments.forEach(inst => {
+      totalPaid += (inst.advanceAmount || 0); // Advance is part of paid
+      remainingBalance += (inst.remainingAmount || 0);
+    });
+
+    const payments = await Payment.find({ customer: req.params.id, status: 'completed' });
+    payments.forEach(pay => {
+      totalPaid += (pay.amount || 0);
+    });
+
     const summary = {
-      totalInstallments: 2,
-      totalPaid: 137500,
-      remainingBalance: 87500
+      totalInstallments,
+      totalPaid,
+      remainingBalance
     };
 
     res.status(200).json({ success: true, data: summary });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
+// @desc    Search customers globally
+// @route   GET /api/customers/search
+// @access  Private
+export const searchCustomers = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json({ success: true, data: [] });
+
+    const searchRegex = new RegExp(q, 'i');
+    const customers = await Customer.find({
+      isDeleted: false,
+      $or: [
+        { fullName: searchRegex },
+        { cnic: searchRegex },
+        { phone: searchRegex }
+      ]
+    }).limit(10).select('fullName cnic phone');
+
+    res.json({ success: true, data: customers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// @desc    Get top overdue customers
+// @route   GET /api/customers/overdue
+// @access  Private
+export const getOverdueCustomers = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 5;
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const Installment = mongoose.model('Installment');
+    
+    // Find active installments that are past due
+    const overdueInstallments = await Installment.find({
+      status: 'active',
+      nextPaymentDate: { $lt: startOfDay }
+    }).populate('customer', 'fullName phone').sort({ nextPaymentDate: 1 }).limit(limit);
+
+    res.json({ success: true, data: overdueInstallments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error' });
   }
 };

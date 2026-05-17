@@ -7,7 +7,7 @@ export function cn(...inputs) {
 
 export function formatCurrency(amount) {
   if (amount === null || amount === undefined) return 'Rs. 0'
-  return `Rs. ${Number(amount).toLocaleString('en-PK')}`
+  return `Rs. ${Math.round(Number(amount)).toLocaleString('en-PK')}`
 }
 
 export function formatDate(date) {

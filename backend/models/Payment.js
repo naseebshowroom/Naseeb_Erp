@@ -17,12 +17,15 @@ const paymentSchema = new mongoose.Schema({
   },
   paymentMode: {
     type: String,
-    enum: ['cash'],
+    enum: ['cash', 'bank', 'other'],
     default: 'cash'
   },
   receivedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  collectorName: {
+    type: String  // Free-text name of who collected (owner/worker name)
   },
   paymentDate: {
     type: Date,

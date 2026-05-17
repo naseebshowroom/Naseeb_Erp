@@ -6,7 +6,8 @@ import {
   getCollectedToday,
   getReceiptData,
   deletePayment,
-  getDailySummary
+  getDailySummary,
+  getMonthlySummary
 } from '../controllers/payment.controller.js';
 import { protect, authorize } from '../middleware/auth.middleware.js';
 
@@ -32,6 +33,7 @@ router.use(protect);
 
 router.get('/collected-today', getCollectedToday);
 router.get('/summary/daily', getSummaryDaily);
+router.get('/summary/monthly', getMonthlySummary);
 
 // Workaround for undefined getSummaryDaily until we declare it inline for alias
 function getSummaryDaily(req, res) {
@@ -40,7 +42,8 @@ function getSummaryDaily(req, res) {
 
 router.route('/')
   .get(getPayments)
-  .post(paymentRules, validateRequest, recordPayment);
+  .post(recordPayment);
+
 
 router.route('/receipt/:id')
   .get(

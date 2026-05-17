@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Check, ChevronRight, ChevronLeft, Save, Search, UserPlus, Smartphone, Snowflake, Monitor, Combine, Refrigerator, Bike, Car, Box } from 'lucide-react'
@@ -24,62 +24,145 @@ const CATEGORIES = [
 ]
 
 // ── Validation Schemas ──
+const cnicRegex = /^[0-9]{5}-[0-9]{7}-[0-9]{1}$/
+const phoneRegex = /^03[0-9]{2}-[0-9]{7}$/
+
 const customerCreateSchema = z.object({
   customerName: z.string().min(1, "Gahak ka naam zaroori hai"),
   fatherName: z.string().min(1, "Walid ka naam zaroori hai"),
-  cnic: z.string().min(1, "CNIC zaroori hai"),
-  phone: z.string().min(1, "Mobile number zaroori hai"),
+  cnic: z.string().regex(cnicRegex, "Must be format: 00000-0000000-0"),
+  phone: z.string().regex(phoneRegex, "Must be format: 0300-0000000"),
   city: z.string().min(1, "Shehar ka naam zaroori hai"),
   address: z.string().min(1, "Mukammal pata zaroori hai"),
 })
 
-// Dynamic schemas based on category group
 const baseProductSchema = z.object({
-  category: z.string().min(1, "Category is required"),
-  ownerPurchasePrice: z.number().min(1, "Required"),
-  installmentPrice: z.number().min(1, "Required"),
+  category: z.string().min(1, "Category chunna zaroori hai"),
+  ownerPurchasePrice: z.number().min(1, "Khareed keemat zaroori hai"),
+  installmentPrice: z.number().min(1, "Sale keemat zaroori hai"),
 })
 
 const electronicsSchema = baseProductSchema.extend({
-  brand: z.string().min(1, "Brand is required"),
-  model: z.string().min(1, "Model is required"),
+  brand: z.string().min(1, "Brand/Company zaroori hai"),
+  model: z.string().min(1, "Model zaroori hai"),
   color: z.string().optional(),
   serialNumber: z.string().optional(),
   condition: z.enum(['new', 'used']),
 })
 
 const motorcycleSchema = baseProductSchema.extend({
-  brand: z.string().min(1, "Company is required"),
-  model: z.string().min(1, "Model is required"),
-  color: z.string().min(1, "Color is required"),
-  engineNo: z.string().min(1, "Engine No. is required"),
-  chassisNo: z.string().min(1, "Chassis No. is required"),
+  brand: z.string().min(1, "Company zaroori hai"),
+  model: z.string().min(1, "Model zaroori hai"),
+  color: z.string().min(1, "Rang zaroori hai"),
+  engineNo: z.string().min(1, "Engine No. zaroori hai"),
+  chassisNo: z.string().min(1, "Chassis No. zaroori hai"),
   regNo: z.string().optional(),
-  distributor: z.string().min(1, "Distributor is required"),
+  distributor: z.string().min(1, "Distributor zaroori hai"),
   marketPrice: z.number().optional(),
 })
 
 const carSchema = baseProductSchema.extend({
-  brand: z.string().min(1, "Make is required"),
-  model: z.string().min(1, "Model is required"),
-  year: z.string().min(4, "Year is required"),
-  color: z.string().min(1, "Color is required"),
-  engineNo: z.string().min(1, "Engine No. is required"),
-  chassisNo: z.string().min(1, "Chassis No. is required"),
+  brand: z.string().min(1, "Make/Brand zaroori hai"),
+  model: z.string().min(1, "Model zaroori hai"),
+  year: z.string().min(4, "Model ka saal zaroori hai"),
+  color: z.string().min(1, "Rang zaroori hai"),
+  engineNo: z.string().min(1, "Engine No. zaroori hai"),
+  chassisNo: z.string().min(1, "Chassis No. zaroori hai"),
   regNo: z.string().optional(),
 })
 
 const scheduleSchema = z.object({
-  advancePayment: z.number().min(0, "Advance payment cannot be negative"),
-  installmentsCount: z.number().min(1, "Must have at least 1 installment"),
+  advancePayment: z.number().min(0, "Peshgi rakam manfi (negative) nahi ho sakti"),
+  installmentsCount: z.number().min(1, "Kam az kam 1 qist zaroori hai"),
   scheduleType: z.enum(['daily', 'weekly', '5-day', '10-day', 'monthly']),
-  startDate: z.string().min(1, "Start date is required"),
+  startDate: z.string().min(1, "Shuru ki tareekh zaroori hai"),
   notes: z.string().optional(),
 })
 
+// ── Shared UI Utilities ──
+const inputCls = (hasError, prefix) =>
+  `w-full px-3 py-2 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm transition-colors ${prefix ? 'pl-10' : ''} ${hasError ? 'border-red-300' : 'border-slate-200'}`
+
+// ── Auto-format helpers ──
+function formatCNIC(raw) {
+  const digits = raw.replace(/\D/g, '').slice(0, 13)
+  let res = ''
+  if (digits.length > 0) res += digits.slice(0, 5)
+  if (digits.length > 5) res += '-' + digits.slice(5, 12)
+  if (digits.length > 12) res += '-' + digits.slice(12, 13)
+  return res
+}
+
+function formatPhone(raw) {
+  const digits = raw.replace(/\D/g, '').slice(0, 11)
+  let res = ''
+  if (digits.length > 0) res += digits.slice(0, 4)
+  if (digits.length > 4) res += '-' + digits.slice(4, 11)
+  return res
+}
+
+// ── Reusable Input Components (OUTSIDE to prevent focus loss) ──
+function InputField({ label, name, placeholder, type = "text", as = "input", prefix, register, errors }) {
+  const err = errors[name]
+  return (
+    <div className="space-y-1">
+      <label className="text-sm font-medium text-slate-700">
+        {label} {err && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        {prefix && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">{prefix}</div>}
+        {as === "textarea" ? (
+          <textarea 
+            {...register(name)} rows={3} placeholder={placeholder}
+            className={inputCls(err, prefix)}
+          />
+        ) : (
+          <input 
+            type={type} {...register(name, { valueAsNumber: type === 'number' })} placeholder={placeholder}
+            className={inputCls(err, prefix)}
+          />
+        )}
+      </div>
+      {err && <p className="text-xs text-red-500 font-medium">{err.message}</p>}
+    </div>
+  )
+}
+
+function MaskedInput({ label, name, placeholder, formatter, control, errors, maxLength }) {
+  const err = errors[name]
+  return (
+    <Controller
+      name={name}
+      control={control}
+      render={({ field: { onChange, value, ref } }) => (
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">
+            {label} {err && <span className="text-red-500">*</span>}
+          </label>
+          <input
+            ref={ref}
+            value={value || ''}
+            onChange={(e) => onChange(formatter(e.target.value))}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            inputMode="numeric"
+            className={inputCls(err)}
+          />
+          {err && <p className="text-xs text-red-500 font-medium">{err.message}</p>}
+        </div>
+      )}
+    />
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────
 export default function InstallmentWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const customerIdParam = searchParams.get('customerId')
   const isEditing = Boolean(id)
   
   const [currentStep, setCurrentStep] = useState(0)
@@ -87,9 +170,8 @@ export default function InstallmentWizard() {
   const [isLoading, setIsLoading] = useState(isEditing)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
-  // To handle dynamic schemas in step 2
   const getProductSchema = () => {
-    if (!selectedCategory) return z.object({}) // will fail validation if required fields aren't there later, but we block next step
+    if (!selectedCategory) return z.object({})
     if (selectedCategory === 'motorcycle') return motorcycleSchema
     if (selectedCategory === 'car') return carSchema
     return electronicsSchema
@@ -99,210 +181,159 @@ export default function InstallmentWizard() {
     customerCreateSchema,
     getProductSchema(),
     scheduleSchema,
-    z.object({}) // Review step has no inputs
+    z.object({})
   ]
 
-  const { register, handleSubmit, trigger, getValues, watch, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, trigger, watch, setValue, getValues, reset, control, formState: { errors } } = useForm({
     resolver: zodResolver(stepSchemas[currentStep]),
     mode: 'onTouched',
     defaultValues: {
-      // Customer
-      customerName: '', fatherName: '', cnic: '', phone: '', city: '', address: '',
-      customerId: '', // For edit mode or if we ever reuse existing
-      
-      category: '',
-      brand: '', model: '', color: '', condition: 'new', serialNumber: '',
-      engineNo: '', chassisNo: '', regNo: '', distributor: '', year: '',
-      ownerPurchasePrice: 0, installmentPrice: 0, marketPrice: 0,
-      advancePayment: 0, installmentsCount: 1, scheduleType: 'monthly', startDate: new Date().toISOString().split('T')[0], notes: ''
+      category: '', condition: 'new', scheduleType: 'monthly', installmentsCount: 12, startDate: new Date().toISOString().split('T')[0]
     }
   })
 
-  // Hydrate data if editing
-  useEffect(() => {
-    if (!isEditing) return
-
-    const loadInstallment = async () => {
-      try {
-        const res = await installmentService.getInstallment(id)
-        if (res.success && res.data) {
-          const d = res.data
-          const cat = d.category === 'lcd' ? 'tv' : d.category
-          
-          setSelectedCategory(cat)
-          
-          // Map backend scheduleType back to frontend
-          const sType = d.scheduleType === '10day' ? '10-day' : d.scheduleType === '5day' ? '5-day' : d.scheduleType
-
-          setValue('customerId', d.customer?._id || d.customer)
-          setValue('category', cat)
-          setValue('brand', d.brand || d.company || '')
-          setValue('model', d.model || '')
-          setValue('color', d.color || '')
-          setValue('condition', d.condition || 'new')
-          setValue('serialNumber', d.serialNumber || '')
-          setValue('engineNo', d.engineNumber || '')
-          setValue('chassisNo', d.chassisNumber || '')
-          setValue('regNo', d.registrationNumber || '')
-          setValue('year', d.year ? String(d.year) : '')
-          
-          setValue('ownerPurchasePrice', d.purchasePrice || 0)
-          setValue('installmentPrice', d.installmentPrice || 0)
-          setValue('advancePayment', d.advanceAmount || 0)
-          setValue('installmentsCount', d.totalInstallments || 1)
-          setValue('scheduleType', sType || 'monthly')
-          setValue('startDate', d.startDate ? new Date(d.startDate).toISOString().split('T')[0] : '')
-          setValue('notes', d.notes || '')
-        }
-      } catch (err) {
-        handleApiError(err)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    loadInstallment()
-  }, [id, isEditing, setValue])
-
-  // Watch values for auto-calculations
   const wInstallmentPrice = watch('installmentPrice') || 0
-  const wAdvancePayment = watch('advancePayment') || 0
-  const wInstallmentsCount = watch('installmentsCount') || 1
   const wPurchasePrice = watch('ownerPurchasePrice') || 0
-
-  const remainingAmount = Math.max(0, wInstallmentPrice - wAdvancePayment)
-  const perInstallment = wInstallmentsCount > 0 ? remainingAmount / wInstallmentsCount : 0
   const profitMargin = wInstallmentPrice - wPurchasePrice
 
+  // Hydrate if editing
+  useEffect(() => {
+    if (!isEditing) return
+    const fetch = async () => {
+      try {
+        const res = await installmentService.getInstallment(id)
+        if (res.success) {
+          const d = res.data
+          setSelectedCategory(d.category)
+          reset({
+            customerName: d.customer?.fullName,
+            fatherName: d.customer?.fatherName,
+            cnic: d.customer?.cnic,
+            phone: d.customer?.phone,
+            city: d.customer?.city,
+            address: d.customer?.address,
+            category: d.category,
+            brand: d.brand,
+            model: d.model,
+            color: d.color,
+            engineNo: d.engineNumber,
+            chassisNo: d.chassisNumber,
+            regNo: d.registrationNumber,
+            distributor: d.distributor?._id || d.distributor,
+            ownerPurchasePrice: d.purchasePrice,
+            installmentPrice: d.installmentPrice,
+            advancePayment: d.advanceAmount,
+            installmentsCount: d.totalInstallments,
+            scheduleType: d.scheduleType,
+            startDate: d.startDate?.split('T')[0],
+          })
+        }
+      } catch (err) { handleApiError(err) }
+      finally { setIsLoading(false) }
+    }
+    fetch()
+  }, [id, isEditing, reset])
+
+  // Hydrate customer if pre-selected via URL
+  useEffect(() => {
+    if (isEditing || !customerIdParam) return
+    const fetchCust = async () => {
+      setIsLoading(true)
+      try {
+        const res = await customerService.getCustomer(customerIdParam)
+        if (res.success) {
+          const c = res.data
+          reset({
+            ...getValues(),
+            customerName: c.fullName,
+            fatherName: c.fatherName,
+            cnic: c.cnic,
+            phone: c.phone,
+            city: c.city,
+            address: c.address,
+          })
+          setCurrentStep(1) // Advance to Product step automatically
+        }
+      } catch (err) { handleApiError(err) }
+      finally { setIsLoading(false) }
+    }
+    fetchCust()
+  }, [customerIdParam, isEditing, reset])
+
   const steps = [
-    { id: 1, title: 'Gahak', desc: 'Naya khata banayein' },
-    { id: 2, title: 'Samaan', desc: 'Tafseelaat' },
-    { id: 3, title: 'Qistain', desc: 'Adaigi ka plan' },
-    { id: 4, title: 'Review', desc: 'Tasdeeq' },
+    { id: 1, title: 'Gahak (Customer)', desc: 'Bunyadi maloomat' },
+    { id: 2, title: 'Samaan (Product)', desc: 'Item ki tafseel' },
+    { id: 3, title: 'Qistain (Plan)', desc: 'Payment schedule' },
+    { id: 4, title: 'Review', desc: 'Confirm & Save' },
   ]
 
   const nextStep = async () => {
-    if (currentStep === 1 && !selectedCategory) {
-      toast.error('Please select a category first.')
-      return
-    }
-    const isStepValid = await trigger()
-    if (isStepValid) setCurrentStep((prev) => Math.min(prev + 1, 3))
+    const valid = await trigger()
+    if (valid) setCurrentStep(p => Math.min(p + 1, 3))
   }
-
-  const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 0))
-
-  const onSubmit = async (data) => {
-    setIsSubmitting(true)
-    try {
-      let finalCustomerId = data.customerId
-
-      // If we are not editing, we create the customer first
-      if (!isEditing) {
-        const customerData = new FormData()
-        customerData.append('fullName', data.customerName)
-        customerData.append('fatherName', data.fatherName)
-        customerData.append('cnic', data.cnic)
-        customerData.append('phone', data.phone)
-        customerData.append('city', data.city)
-        customerData.append('address', data.address)
-        
-        // Guarantors can be empty for now if not provided, backend might require them, but we pass empty string array or basic JSON
-        customerData.append('guarantors', JSON.stringify([]))
-
-        const createdCustomer = await customerService.createCustomer(customerData)
-        finalCustomerId = createdCustomer.data._id
-      }
-      // Map frontend category to backend enum
-      const backendCategory = data.category === 'tv' ? 'lcd' : data.category
-      
-      // Map frontend schedule type to backend enum
-      const backendSchedule = data.scheduleType.replace('-', '') // '10-day' -> '10day'
-      
-      const payload = {
-        customer: finalCustomerId,
-        category: backendCategory,
-        
-        brand: data.brand,
-        company: data.brand,
-        model: data.model,
-        color: data.color,
-        serialNumber: data.serialNumber,
-        engineNumber: data.engineNo,
-        chassisNumber: data.chassisNo,
-        registrationNumber: data.regNo,
-        year: data.year ? Number(data.year) : undefined,
-        condition: data.condition,
-        
-        purchasePrice: data.ownerPurchasePrice,
-        installmentPrice: data.installmentPrice,
-        
-        advanceAmount: data.advancePayment,
-        totalInstallments: data.installmentsCount,
-        scheduleType: backendSchedule,
-        startDate: data.startDate,
-        notes: data.notes
-      }
-      
-      if (isEditing) {
-        await installmentService.updateInstallment(id, payload)
-        toast.success('Installment plan updated successfully!')
-      } else {
-        await installmentService.createInstallment(payload)
-        toast.success('Installment plan created successfully!')
-      }
-      navigate('/installments')
-    } catch (err) {
-      handleApiError(err)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+  const prevStep = () => setCurrentStep(p => Math.max(p - 1, 0))
 
   const handleCategorySelect = (catId) => {
     setSelectedCategory(catId)
     setValue('category', catId)
   }
 
-  // Common Input
-  const InputField = ({ label, name, placeholder, type = "text", as = "input", prefix }) => (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700">
-        {label} {errors[name] && <span className="text-red-500">*</span>}
-      </label>
-      <div className="relative">
-        {prefix && <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">{prefix}</div>}
-        {as === "textarea" ? (
-          <textarea 
-            {...register(name)} rows={3} placeholder={placeholder}
-            className={`w-full px-3 py-2 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm transition-colors ${prefix ? 'pl-8' : ''} ${errors[name] ? 'border-red-300' : 'border-slate-200'}`}
-          />
-        ) : (
-          <input 
-            type={type} {...register(name, { valueAsNumber: type === 'number' })} placeholder={placeholder}
-            className={`w-full px-3 py-2 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm transition-colors ${prefix ? 'pl-10' : ''} ${errors[name] ? 'border-red-300' : 'border-slate-200'}`}
-          />
-        )}
-      </div>
-      {errors[name] && <p className="text-xs text-red-500 font-medium">{errors[name].message}</p>}
-    </div>
-  )
+  const onSubmit = async () => {
+    // Use getValues() directly — the zodResolver on step 4 is z.object({})
+    // which strips all values from the `data` param, so we read the store directly
+    const data = getValues()
+    setIsSubmitting(true)
+    try {
+      const payload = {
+        customer: customerIdParam || {
+          fullName:   data.customerName,
+          fatherName: data.fatherName,
+          cnic:       data.cnic,
+          phone:      data.phone,
+          city:       data.city,
+          address:    data.address,
+          guarantors: [],
+        },
+        category:           data.category,
+        brand:              data.brand,
+        model:              data.model,
+        color:              data.color,
+        engineNumber:       data.engineNo,
+        chassisNumber:      data.chassisNo,
+        registrationNumber: data.regNo,
+        distributor:        data.distributor,
+        purchasePrice:      Number(data.ownerPurchasePrice),
+        installmentPrice:   Number(data.installmentPrice),
+        advanceAmount:      Number(data.advancePayment),
+        totalInstallments:  Number(data.installmentsCount),
+        scheduleType:       data.scheduleType,
+        startDate:          data.startDate,
+      }
+      await installmentService.createInstallment(payload)
+      toast.success('Naya khata kamyabi se ban gaya!')
+      navigate('/installments')
+    } catch (err) { handleApiError(err) }
+    finally { setIsSubmitting(false) }
+  }
+
+  const fieldProps = { register, errors }
 
   return (
     <PageWrapper 
-      title={isEditing ? 'Edit Installment' : 'New Installment'}
-      subtitle="Follow the steps to create a new installment agreement."
-      breadcrumbs={[{ label: 'Installments', to: '/installments' }, { label: isEditing ? 'Edit' : 'New' }]}
+      title={isEditing ? 'Khata Edit Karein' : 'Naya Khata'}
+      subtitle="Naya khata shuru karne ke liye darj zail steps mukammal karein."
+      breadcrumbs={[{ label: 'Khatey', to: '/installments' }, { label: isEditing ? 'Edit' : 'Naya' }]}
     >
       {isLoading ? (
-        <div className="flex justify-center items-center h-64 text-slate-500 font-medium">Loading installment data...</div>
+        <div className="flex justify-center items-center h-64 text-slate-500 font-medium">Khata load ho raha hai...</div>
       ) : (
       <div className="max-w-4xl mx-auto space-y-6">
         
-        {/* ── Stepper Header ── */}
+        {/* ── Stepper ── */}
         <div className="erp-card p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between relative">
             {steps.map((step, idx) => (
-              <div key={step.id} className="flex flex-col items-center relative z-10 w-1/4">
+              <div key={step.id} className="flex flex-col items-center z-10 w-1/4">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-colors duration-300 ${
                   currentStep > idx ? 'bg-emerald-500 border-emerald-500 text-white' : 
                   currentStep === idx ? 'bg-blue-600 border-blue-600 text-white' : 
@@ -316,13 +347,13 @@ export default function InstallmentWizard() {
                 </div>
               </div>
             ))}
-            <div className="absolute top-[44px] left-[12%] right-[12%] h-1 bg-slate-100 z-0">
+            <div className="absolute top-5 left-[12%] right-[12%] h-1 bg-slate-100 z-0">
               <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${(currentStep / 3) * 100}%` }} />
             </div>
           </div>
         </div>
 
-        {/* ── Form Content ── */}
+        {/* ── Form ── */}
         <form onSubmit={handleSubmit(onSubmit)} className="erp-card overflow-hidden min-h-[400px]">
           <div className="p-6 md:p-8">
             
@@ -335,13 +366,13 @@ export default function InstallmentWizard() {
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <InputField label="Gahak ka Naam" name="customerName" placeholder="Muhammad Ali" />
-                  <InputField label="Walid ka Naam" name="fatherName" placeholder="Ahmad Khan" />
-                  <InputField label="Shanakhti Card (CNIC)" name="cnic" placeholder="00000-0000000-0" />
-                  <InputField label="Mobile Number" name="phone" placeholder="0300-0000000" />
-                  <InputField label="Shehar" name="city" placeholder="Lahore" />
+                  <InputField label="Gahak ka Naam" name="customerName" placeholder="Muhammad Ali" {...fieldProps} />
+                  <InputField label="Walid ka Naam" name="fatherName" placeholder="Ahmad Khan" {...fieldProps} />
+                  <MaskedInput label="Shanakhti Card (CNIC)" name="cnic" placeholder="00000-0000000-0" formatter={formatCNIC} control={control} errors={errors} maxLength={15} />
+                  <MaskedInput label="Mobile Number" name="phone" placeholder="0300-0000000" formatter={formatPhone} control={control} errors={errors} maxLength={12} />
+                  <InputField label="Shehar" name="city" placeholder="Lahore" {...fieldProps} />
                   <div className="md:col-span-2">
-                    <InputField label="Mukammal Pata (Address)" name="address" as="textarea" placeholder="Ghar ka mukammal pata..." />
+                    <InputField label="Mukammal Pata (Address)" name="address" as="textarea" placeholder="Ghar ka mukammal pata..." {...fieldProps} />
                   </div>
                 </div>
               </div>
@@ -351,7 +382,7 @@ export default function InstallmentWizard() {
             {currentStep === 1 && (
               <div className="space-y-8 animate-fade-in">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Select Category</h3>
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Samaan Ki Qisam (Category)</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {CATEGORIES.map(cat => {
                       const Icon = cat.icon
@@ -375,43 +406,42 @@ export default function InstallmentWizard() {
 
                 {selectedCategory && (
                   <div className="pt-6 border-t border-slate-100 animate-slide-up">
-                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Product Details</h3>
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Samaan Ki Tafseel</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* Common fields based on group */}
                       {selectedCategory === 'motorcycle' ? (
                         <>
-                          <InputField label="Company (Make)" name="brand" placeholder="e.g. Honda" />
-                          <InputField label="Model" name="model" placeholder="e.g. CD 70" />
-                          <InputField label="Color" name="color" />
-                          <InputField label="Engine Number" name="engineNo" />
-                          <InputField label="Chassis Number" name="chassisNo" />
-                          <InputField label="Registration Number" name="regNo" placeholder="Optional" />
-                          <InputField label="Distributor" name="distributor" placeholder="Select or type..." />
-                          <InputField label="Market Price" name="marketPrice" type="number" prefix="Rs." />
+                          <InputField label="Company (Make)" name="brand" placeholder="e.g. Honda" {...fieldProps} />
+                          <InputField label="Model" name="model" placeholder="e.g. CD 70" {...fieldProps} />
+                          <InputField label="Color" name="color" {...fieldProps} />
+                          <InputField label="Engine Number" name="engineNo" {...fieldProps} />
+                          <InputField label="Chassis Number" name="chassisNo" {...fieldProps} />
+                          <InputField label="Registration Number" name="regNo" placeholder="Optional" {...fieldProps} />
+                          <InputField label="Distributor" name="distributor" placeholder="Select or type..." {...fieldProps} />
+                          <InputField label="Market Price" name="marketPrice" type="number" prefix="Rs." {...fieldProps} />
                         </>
                       ) : selectedCategory === 'car' ? (
                         <>
-                          <InputField label="Make" name="brand" placeholder="e.g. Suzuki" />
-                          <InputField label="Model" name="model" placeholder="e.g. Alto VXR" />
-                          <InputField label="Year" name="year" placeholder="e.g. 2024" type="number" />
-                          <InputField label="Color" name="color" />
-                          <InputField label="Engine Number" name="engineNo" />
-                          <InputField label="Chassis Number" name="chassisNo" />
+                          <InputField label="Make" name="brand" placeholder="e.g. Suzuki" {...fieldProps} />
+                          <InputField label="Model" name="model" placeholder="e.g. Alto VXR" {...fieldProps} />
+                          <InputField label="Year" name="year" placeholder="e.g. 2024" type="number" {...fieldProps} />
+                          <InputField label="Color" name="color" {...fieldProps} />
+                          <InputField label="Engine Number" name="engineNo" {...fieldProps} />
+                          <InputField label="Chassis Number" name="chassisNo" {...fieldProps} />
                           <div className="md:col-span-2">
-                            <InputField label="Registration Number" name="regNo" placeholder="Optional" />
+                            <InputField label="Registration Number" name="regNo" placeholder="Optional" {...fieldProps} />
                           </div>
                         </>
                       ) : (
                         <>
-                          <InputField label="Brand" name="brand" placeholder="e.g. Samsung" />
-                          <InputField label="Model" name="model" placeholder="e.g. Galaxy A54" />
-                          <InputField label="Color" name="color" placeholder="Optional" />
-                          <InputField label="Serial Number" name="serialNumber" placeholder="Optional" />
+                          <InputField label="Brand" name="brand" placeholder="e.g. Samsung" {...fieldProps} />
+                          <InputField label="Model" name="model" placeholder="e.g. Galaxy A54" {...fieldProps} />
+                          <InputField label="Color" name="color" placeholder="Optional" {...fieldProps} />
+                          <InputField label="Serial Number" name="serialNumber" placeholder="Optional" {...fieldProps} />
                           <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700">Condition</label>
+                            <label className="text-sm font-medium text-slate-700">Haisiyat (Condition)</label>
                             <select {...register('condition')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm">
-                              <option value="new">Brand New</option>
-                              <option value="used">Used / Second Hand</option>
+                              <option value="new">Bilkul Naya</option>
+                              <option value="used">Istemaal Shuda</option>
                             </select>
                           </div>
                         </>
@@ -420,14 +450,11 @@ export default function InstallmentWizard() {
 
                     <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 mt-8">Keemat (Pricing)</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50 p-5 rounded-xl border border-slate-200">
-                      <InputField label="Dukaan Ki Khareed (Purchase Price)" name="ownerPurchasePrice" type="number" prefix="Rs." />
-                      <InputField label="Qistain Wali Keemat (Sale Price)" name="installmentPrice" type="number" prefix="Rs." />
-                      
+                      <InputField label="Dukaan Ki Khareed (Purchase Price)" name="ownerPurchasePrice" type="number" prefix="Rs." {...fieldProps} />
+                      <InputField label="Qistain Wali Keemat (Sale Price)" name="installmentPrice" type="number" prefix="Rs." {...fieldProps} />
                       <div className="md:col-span-2 pt-2 flex items-center justify-between text-sm">
                         <span className="text-slate-500 font-medium">Munafa (Profit):</span>
-                        <span className={`font-bold ${profitMargin > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {formatCurrency(profitMargin)}
-                        </span>
+                        <span className={`font-bold ${profitMargin > 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(profitMargin)}</span>
                       </div>
                     </div>
                   </div>
@@ -438,137 +465,98 @@ export default function InstallmentWizard() {
             {/* STEP 3: Schedule */}
             {currentStep === 2 && (
               <div className="space-y-8 animate-fade-in">
-                <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs text-blue-600 font-bold uppercase tracking-wider">Kul Rakam (Total Price)</span>
-                    <div className="text-2xl font-black text-slate-900">{formatCurrency(wInstallmentPrice)}</div>
-                  </div>
+                <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100">
+                  <span className="text-xs text-blue-600 font-bold uppercase tracking-wider">Kul Rakam (Total Price)</span>
+                  <div className="text-2xl font-black text-slate-900">{formatCurrency(wInstallmentPrice)}</div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-5">
-                    <InputField label="Peshgi Rakam (Advance Payment)" name="advancePayment" type="number" prefix="Rs." />
-                    
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                      <span className="text-xs text-slate-500 font-bold uppercase">Baqaya Rakam</span>
-                      <div className="text-xl font-bold text-red-600">{formatCurrency(remainingAmount)}</div>
-                    </div>
-
-                    <InputField label="Qistain (Installments Count)" name="installmentsCount" type="number" />
-                    
+                    <InputField label="Peshgi Rakam (Advance Payment)" name="advancePayment" type="number" prefix="Rs." {...fieldProps} />
+                    <InputField label="Qiston Ki Tadad (No. of Installments)" name="installmentsCount" type="number" placeholder="e.g. 12" {...fieldProps} />
+                  </div>
+                  <div className="space-y-5">
                     <div className="space-y-1">
-                      <label className="text-sm font-medium text-slate-700">Adaigi Ka Tareeqa (Frequency)</label>
+                      <label className="text-sm font-medium text-slate-700">Adaigi Ka Tareeqa (Schedule Type)</label>
                       <select {...register('scheduleType')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm">
-                        <option value="monthly">Mahana (Monthly)</option>
-                        <option value="10-day">Har 10 Din Baad</option>
-                        <option value="weekly">Haftawar (Weekly)</option>
                         <option value="daily">Rozana (Daily)</option>
+                        <option value="weekly">Hafta War (Weekly)</option>
+                        <option value="5-day">5 Din Baad</option>
+                        <option value="10-day">10 Din Baad</option>
+                        <option value="monthly">Mahana (Monthly)</option>
                       </select>
                     </div>
-
-                    <InputField label="Pehli Qist Ki Tareekh (Start Date)" name="startDate" type="date" />
+                    <InputField label="Shuru Ki Tareekh (Start Date)" name="startDate" type="date" {...fieldProps} />
                   </div>
+                </div>
 
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-slate-900 border-b pb-2">Plan Preview</h4>
-                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 flex flex-col h-full">
-                      <div className="mb-4 text-center">
-                        <span className="text-xs text-slate-500 uppercase tracking-wider font-bold block mb-1">Har Qist (Per Installment)</span>
-                        <span className="text-3xl font-black text-blue-600">{formatCurrency(perInstallment)}</span>
+                {/* Live calculation preview */}
+                {watch('advancePayment') >= 0 && watch('installmentsCount') > 0 && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <div className="text-xs text-slate-500 font-medium">Baqaya Rakam</div>
+                        <div className="font-bold text-slate-900">{formatCurrency(wInstallmentPrice - (watch('advancePayment') || 0))}</div>
                       </div>
-                      
-                      <div className="flex-1 space-y-3">
-                        <div className="flex justify-between text-sm py-2 border-b border-slate-200/60">
-                          <span className="text-slate-600">Installment 1</span>
-                          <span className="font-medium text-slate-900">{watch('startDate')}</span>
-                        </div>
-                        <div className="flex justify-between text-sm py-2 border-b border-slate-200/60">
-                          <span className="text-slate-600">Installment 2</span>
-                          <span className="font-medium text-slate-400">Auto-calculated...</span>
-                        </div>
-                        <div className="flex justify-between text-sm py-2 border-b border-slate-200/60">
-                          <span className="text-slate-600">Installment 3</span>
-                          <span className="font-medium text-slate-400">Auto-calculated...</span>
-                        </div>
-                        <div className="text-center pt-2 text-xs text-slate-400 font-medium italic">
-                          and {Math.max(0, wInstallmentsCount - 3)} more payments
-                        </div>
+                      <div>
+                        <div className="text-xs text-slate-500 font-medium">Qiston Ki Tadad</div>
+                        <div className="font-bold text-blue-600">{watch('installmentsCount') || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-500 font-medium">Ek Qist</div>
+                        <div className="font-bold text-emerald-600">{formatCurrency((wInstallmentPrice - (watch('advancePayment') || 0)) / (watch('installmentsCount') || 1))}</div>
                       </div>
                     </div>
                   </div>
-                  
-                  <div className="md:col-span-2">
-                    <InputField label="Notes / Special Conditions" name="notes" as="textarea" placeholder="Any special agreements with the customer..." />
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
             {/* STEP 4: Review */}
             {currentStep === 3 && (
               <div className="space-y-6 animate-fade-in">
-                <div className="text-center mb-6">
-                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <Check size={32} strokeWidth={3} />
+                <h3 className="text-lg font-bold text-slate-900 border-b pb-3">Tafseelat Ka Jaiza (Review)</h3>
+                <div className="bg-slate-50 p-6 rounded-xl space-y-6 text-sm">
+                  <div>
+                    <h4 className="font-semibold text-blue-600 mb-3 uppercase tracking-wide text-xs">Gahak Ki Maloomat</h4>
+                    <div className="grid grid-cols-2 gap-2 text-slate-700">
+                      <p><span className="text-slate-500">Naam:</span> <strong>{getValues('customerName')}</strong></p>
+                      <p><span className="text-slate-500">CNIC:</span> <strong>{getValues('cnic')}</strong></p>
+                      <p><span className="text-slate-500">Phone:</span> <strong>{getValues('phone')}</strong></p>
+                      <p><span className="text-slate-500">Shehar:</span> <strong>{getValues('city')}</strong></p>
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900">Review & Confirm</h3>
-                  <p className="text-sm text-slate-500">Please review the details before creating the agreement.</p>
-                </div>
-
-                <div className="bg-slate-50 rounded-xl p-6 space-y-6 text-sm border border-slate-200">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-6 border-b border-slate-200">
-                    <div><span className="block text-xs text-slate-500 uppercase">Customer</span><span className="font-bold text-slate-900">Muhammad Asif</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Category</span><span className="font-bold text-slate-900 capitalize">{getValues('category')}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Item</span><span className="font-bold text-slate-900">{getValues('brand')} {getValues('model')}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Condition</span><span className="font-bold text-slate-900 capitalize">{getValues('condition') || 'New'}</span></div>
+                  <div className="pt-4 border-t border-slate-200">
+                    <h4 className="font-semibold text-blue-600 mb-3 uppercase tracking-wide text-xs">Samaan Ki Tafseel</h4>
+                    <div className="grid grid-cols-2 gap-2 text-slate-700">
+                      <p><span className="text-slate-500">Category:</span> <strong className="capitalize">{getValues('category')}</strong></p>
+                      <p><span className="text-slate-500">Samaan:</span> <strong>{getValues('brand')} {getValues('model')}</strong></p>
+                      <p><span className="text-slate-500">Khareed Keemat:</span> <strong>{formatCurrency(getValues('ownerPurchasePrice'))}</strong></p>
+                      <p><span className="text-slate-500">Sale Keemat:</span> <strong>{formatCurrency(wInstallmentPrice)}</strong></p>
+                    </div>
                   </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-6 border-b border-slate-200">
-                    <div><span className="block text-xs text-slate-500 uppercase">Total Price</span><span className="font-bold text-blue-600">{formatCurrency(getValues('installmentPrice'))}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Advance</span><span className="font-bold text-emerald-600">{formatCurrency(getValues('advancePayment'))}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Remaining</span><span className="font-bold text-red-600">{formatCurrency(remainingAmount)}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Owner Profit</span><span className="font-bold text-slate-900">{formatCurrency(profitMargin)}</span></div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div><span className="block text-xs text-slate-500 uppercase">Installments</span><span className="font-bold text-slate-900">{getValues('installmentsCount')}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Frequency</span><span className="font-bold text-slate-900 capitalize">{getValues('scheduleType')}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Per Payment</span><span className="font-bold text-slate-900">{formatCurrency(perInstallment)}</span></div>
-                    <div><span className="block text-xs text-slate-500 uppercase">Start Date</span><span className="font-bold text-slate-900">{getValues('startDate')}</span></div>
+                  <div className="pt-4 border-t border-slate-200">
+                    <h4 className="font-semibold text-blue-600 mb-3 uppercase tracking-wide text-xs">Qiston Ka Plan</h4>
+                    <div className="grid grid-cols-2 gap-2 text-slate-700">
+                      <p><span className="text-slate-500">Peshgi:</span> <strong>{formatCurrency(getValues('advancePayment'))}</strong></p>
+                      <p><span className="text-slate-500">Qiston Ki Tadad:</span> <strong>{getValues('installmentsCount')}</strong></p>
+                      <p><span className="text-slate-500">Tareeqa:</span> <strong className="capitalize">{getValues('scheduleType')}</strong></p>
+                      <p><span className="text-slate-500">Ek Qist:</span> <strong className="text-emerald-600">{formatCurrency((wInstallmentPrice - (getValues('advancePayment')||0)) / (getValues('installmentsCount')||1))}</strong></p>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* ── Footer Actions ── */}
+          {/* ── Footer ── */}
           <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={prevStep}
-              disabled={currentStep === 0}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"
-            >
-              <ChevronLeft size={18} /> Back
-            </button>
-            
+            <button type="button" onClick={prevStep} disabled={currentStep === 0} className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"><ChevronLeft size={18} /> Back</button>
             <div className="flex gap-3">
               {currentStep < 3 ? (
-                <button
-                  type="button"
-                  onClick={nextStep}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
-                >
-                  Next Step <ChevronRight size={18} />
-                </button>
+                <button type="button" onClick={nextStep} className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-sm">Next Step <ChevronRight size={18} /></button>
               ) : (
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
-                >
-                  <Save size={18} /> {isSubmitting ? 'Saving...' : 'Confirm & Create'}
-                </button>
+                <button type="button" onClick={onSubmit} disabled={isSubmitting} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"><Save size={18} /> {isSubmitting ? 'Bana raha hai...' : 'Khatma Karein (Save)'}</button>
               )}
             </div>
           </div>

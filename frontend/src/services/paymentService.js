@@ -27,6 +27,11 @@ const paymentService = {
     return res.data;
   },
 
+  getMonthlySummary: async () => {
+    const res = await api.get(API_ENDPOINTS.PAYMENTS.SUMMARY_MONTHLY);
+    return res.data;
+  },
+
   /**
    * Record a payment. Backend runs this in a MongoDB transaction.
    * @param {{ installmentId, amount, receivedBy, notes, scheduleEntryId }} data

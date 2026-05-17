@@ -28,12 +28,24 @@ const allowedOrigins = [
   process.env.CLIENT_URL || 'http://localhost:3000',
   'http://localhost:3000',
   'http://localhost:5173', // Vite dev server
+  'http://localhost:5174', // Vite fallback
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
 ];
+
+// In development, you might want to allow all local IPs
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  // Allow local network IP addresses for mobile testing
+  if (/^http:\/\/(192\.168\.\d+\.\d+|172\.16\.\d+\.\d+|10\.\d+\.\d+\.\d+):\d+$/.test(origin)) return true;
+  return false;
+};
 
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl, Postman)
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error(`CORS policy violation: origin ${origin} not allowed.`));
@@ -58,11 +70,19 @@ app.use(cookieParser());
 // ── Rate Limiting ───────────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW) || 15) * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX) || 100,
+  // In dev use a very high ceiling; production defaults to 500 per window
+  max: parseInt(process.env.RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'production' ? 500 : 10000),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests. Please slow down and try again later.' },
-  skip: (req) => req.path === '/api/health', // don't rate-limit health checks
+  // Skip rate-limiting for:
+  // 1. Health checks (used by uptime monitors)
+  // 2. Any request that already carries a valid Bearer token (authenticated ERP users)
+  skip: (req) => {
+    if (req.path === '/api/health') return true;
+    if (req.headers.authorization?.startsWith('Bearer ')) return true;
+    return false;
+  },
 });
 app.use('/api', limiter);
 

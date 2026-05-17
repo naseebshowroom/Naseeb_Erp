@@ -25,7 +25,7 @@ export default function MainLayout() {
   const matchedKey = Object.keys(PAGE_TITLES).find(key =>
     location.pathname === key || location.pathname.startsWith(key + '/')
   )
-  const pageTitle = PAGE_TITLES[matchedKey] ?? 'Naseeb ERP'
+  const pageTitle = PAGE_TITLES[matchedKey] ?? 'Naseeb Autos & Showroom'
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -54,7 +54,7 @@ export default function MainLayout() {
         {/* ── Footer ────────────────────────────── */}
         <footer className="px-6 py-3 border-t border-slate-200 bg-white
           text-xs text-slate-400 flex items-center justify-between gap-2 flex-wrap">
-          <span>© {new Date().getFullYear()} Naseeb Installment Business — All rights reserved</span>
+          <span>© {new Date().getFullYear()} Naseeb Autos &amp; Showroom — All rights reserved</span>
           <span className="text-slate-300">v1.0.0</span>
         </footer>
 

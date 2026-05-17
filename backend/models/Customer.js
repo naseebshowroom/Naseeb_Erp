@@ -58,6 +58,7 @@ const customerSchema = new mongoose.Schema({
     default: 'active'
   },
   
+
   guarantors: [guarantorSchema],
   
   createdBy: {

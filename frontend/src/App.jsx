@@ -16,6 +16,7 @@ import InventoryPage from '@/pages/inventory/InventoryPage';
 import DistributorsPage from '@/pages/distributors/DistributorsPage';
 import DistributorDetail from '@/pages/distributors/DistributorDetail';
 import WorkersPage from '@/pages/workers/WorkersPage';
+import CollectionsPage from '@/pages/collections/CollectionsPage';
 import WorkerDashboard from '@/pages/workers/WorkerDashboard';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import AgreementsPage from '@/pages/agreements/AgreementsPage';
@@ -81,6 +82,7 @@ function App() {
           <Route path="distributors" element={<DistributorsPage />} />
           <Route path="distributors/:id" element={<DistributorDetail />} />
           <Route path="workers" element={<WorkersPage />} />
+          <Route path="collections" element={<CollectionsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="agreements" element={<AgreementsPage />} />
           <Route path="settings" element={<SettingsPage />} />

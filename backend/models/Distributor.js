@@ -7,6 +7,11 @@ const distributorSchema = new mongoose.Schema({
   address: { type: String },
   cnic: { type: String },
   notes: { type: String },
+  category: {
+    type: String,
+    enum: ['motorcycle', 'electronics', 'car', 'other'],
+    default: 'other',
+  },
 }, { timestamps: true });
 
 export default mongoose.model('Distributor', distributorSchema);

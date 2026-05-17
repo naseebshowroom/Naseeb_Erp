@@ -19,7 +19,7 @@ const installmentSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['mobile', 'ac', 'lcd', 'washing_machine', 'fridge', 'motorcycle', 'car', 'other'],
+    enum: ['mobile', 'ac', 'tv', 'washing_machine', 'fridge', 'motorcycle', 'car', 'other'],
     required: true
   },
   
@@ -51,7 +51,7 @@ const installmentSchema = new mongoose.Schema({
   perInstallmentAmount: { type: Number },
   scheduleType: {
     type: String,
-    enum: ['daily', 'weekly', '5day', '10day', 'monthly'],
+    enum: ['daily', 'weekly', '5-day', '10-day', 'monthly'],
     required: true
   },
   startDate: { type: Date, required: true },
@@ -79,15 +79,18 @@ const installmentSchema = new mongoose.Schema({
 // Auto-calculate remaining, profit, and per-installment
 installmentSchema.pre('save', function(next) {
   if (this.isModified('purchasePrice') || this.isModified('installmentPrice')) {
-    this.profitMargin = this.installmentPrice - this.purchasePrice;
+    this.profitMargin = Math.round(this.installmentPrice - this.purchasePrice);
   }
   
-  if (this.isModified('installmentPrice') || this.isModified('advanceAmount')) {
-    this.remainingAmount = this.installmentPrice - this.advanceAmount;
+  if (this.isModified('installmentPrice') || this.isModified('advanceAmount') || this.isModified('totalPaid')) {
+    this.remainingAmount = Math.round(this.installmentPrice - this.advanceAmount - (this.totalPaid || 0));
   }
   
-  if (this.isModified('remainingAmount') || this.isModified('totalInstallments')) {
-    this.perInstallmentAmount = this.remainingAmount / this.totalInstallments;
+  // Recalculate per installment amount if total installments or base remaining changes
+  // This only runs on plan creation or major changes
+  if (this.isNew || this.isModified('totalInstallments')) {
+    const baseRemaining = this.installmentPrice - this.advanceAmount;
+    this.perInstallmentAmount = Math.round(baseRemaining / this.totalInstallments);
   }
   
   next();

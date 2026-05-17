@@ -1,101 +1,164 @@
-import { useState } from 'react'
-import { 
-  Search, Filter, Plus, Package, Bike, 
-  Smartphone, AlertTriangle, CheckCircle2, X, Clock
+import { useState, useEffect, useCallback } from 'react'
+import {
+  Search, Plus, Package, Bike,
+  Smartphone, AlertTriangle, CheckCircle2, X, Clock,
+  RefreshCw, TrendingDown, ShoppingCart, Tag
 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import PageWrapper from '@/components/ui/PageWrapper'
-import StatusBadge from '@/components/ui/StatusBadge'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import inventoryService from '@/services/inventoryService'
+import { handleApiError } from '@/utils/errorHandler'
+import api from '@/lib/axios'
+import Pagination, { usePagination } from '@/components/ui/Pagination'
 
-// ── Dummy Data ─────────────────────────────────────────────
-const MOCK_MOTO = [
-  { id: 1, company: 'Honda', model: 'CD 70', color: 'Red', engineNo: 'E-12345', chassisNo: 'C-98765', customer: 'Muhammad Asif', status: 'on_installment', date: '2026-05-01' },
-  { id: 2, company: 'Yamaha', model: 'YBR 125', color: 'Black', engineNo: 'E-55555', chassisNo: 'C-44444', customer: null, status: 'available', date: '2026-05-10' },
-  { id: 3, company: 'United', model: 'US 70', color: 'Red', engineNo: 'E-11111', chassisNo: 'C-22222', customer: 'Ali Hassan', status: 'completed', date: '2025-01-15' },
-]
+// ── Status helpers ────────────────────────────────────────────
+const STATUS_MAP = {
+  available:      { label: 'Dastiyab',      cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  on_installment: { label: 'Qist Par',      cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+  sold:           { label: 'Bik Gaya',      cls: 'bg-slate-100 text-slate-500 border-slate-200' },
+}
 
-const MOCK_ELEC = [
-  { id: 101, category: 'Air Conditioner', brand: 'Haier', model: '1.5 Ton Inverter', serialNo: 'SN-00123', price: 110000, customer: 'Sana Bibi', status: 'on_installment' },
-  { id: 102, category: 'Mobile', brand: 'Samsung', model: 'Galaxy A54', serialNo: 'IMEI-987654321', price: 105000, customer: null, status: 'available' },
-]
+function StockBadge({ status }) {
+  const s = STATUS_MAP[status] || STATUS_MAP.sold
+  return (
+    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${s.cls}`}>{s.label}</span>
+  )
+}
 
-const MOCK_ALERTS = [
-  { id: 1, type: 'completion', message: 'Honda CD 70 (Tariq) is completing in 2 installments. Stock will free up.' },
-  { id: 2, type: 'low_stock', message: 'Low Stock Warning: 0 Washing Machines available in inventory.' },
-]
+// ── Stat Card ──────────────────────────────────────────────────
+function StatCard({ icon: Icon, label, value, color }) {
+  return (
+    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+      <div>
+        <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">{label}</p>
+        <h3 className={`text-2xl font-black ${color}`}>{value ?? '—'}</h3>
+      </div>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${color === 'text-slate-900' ? 'bg-slate-100 text-slate-500' : color === 'text-emerald-600' ? 'bg-emerald-50 text-emerald-600' : color === 'text-blue-600' ? 'bg-blue-50 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
+        <Icon size={20} />
+      </div>
+    </div>
+  )
+}
 
+// ── Field helper ──────────────────────────────────────────────
+function Field({ label, children }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">{label}</label>
+      {children}
+    </div>
+  )
+}
+
+const INPUT_CLS = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all"
+
+// ── Main Page ──────────────────────────────────────────────────
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState('motorcycles')
+  const [activeTab, setActiveTab]     = useState('motorcycles')
+  const [items, setItems]             = useState([])
+  const [stats, setStats]             = useState(null)
+  const [alerts, setAlerts]           = useState([])
+  const [isLoading, setIsLoading]     = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [search, setSearch]           = useState('')
   const [addModalOpen, setAddModalOpen] = useState(false)
-  const { register, handleSubmit, reset, watch } = useForm({ defaultValues: { category: 'motorcycle' } })
+  const pg = usePagination(items, 15)
 
+  const { register, handleSubmit, reset, watch } = useForm({
+    defaultValues: { category: 'motorcycle', qty: 1 }
+  })
   const isMotoModal = watch('category') === 'motorcycle'
 
-  const handleAddStock = (data) => {
-    toast.success('Stock added successfully!')
-    setAddModalOpen(false)
-    reset()
+  // ── Data fetching ────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const category = activeTab === 'motorcycles' ? 'motorcycle' : 'electronics'
+      const [invRes, statsRes, alertsRes] = await Promise.all([
+        inventoryService.getInventory({ category, search: search || undefined }),
+        inventoryService.getStats(),
+        inventoryService.getAlerts(),
+      ])
+      if (invRes.success)    setItems(invRes.data)
+      if (statsRes.success)  setStats(statsRes.data)
+      if (alertsRes.success) setAlerts(alertsRes.data)
+    } catch (err) {
+      handleApiError(err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [activeTab, search])
+
+  useEffect(() => {
+    const t = setTimeout(fetchData, 300)
+    return () => clearTimeout(t)
+  }, [fetchData])
+
+  // ── Submit add stock ─────────────────────────────────────────
+  const handleAddStock = async (data) => {
+    setIsSubmitting(true)
+    try {
+      const payload = {
+        category: data.category,
+        company:  data.company || data.brand || '',
+        model:    data.model,
+        color:    data.color || '',
+        engineNo: data.engineNo || '',
+        chassisNo: data.chassisNo || '',
+        serialNo:  data.serialNo || '',
+        purchasePrice: Number(data.purchasePrice) || 0,
+        distributor:   data.distributor || '',
+        elecType:      data.elecType || '',
+        qty:           data.qty || 1,
+      }
+      await inventoryService.addInventory(payload)
+      toast.success('Stock kamyabi se add ho gaya!')
+      setAddModalOpen(false)
+      reset()
+      fetchData()
+    } catch (err) {
+      handleApiError(err)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  // Summary Cards Data
-  const summaryMoto = { total: 45, onInstallment: 28, completed: 12, available: 5 }
-  const summaryElec = { total: 120, onInstallment: 85, completed: 25, available: 10 }
-  const currentSummary = activeTab === 'motorcycles' ? summaryMoto : summaryElec
+  const currentStats = stats
+    ? (activeTab === 'motorcycles' ? stats.motorcycle : stats.electronics)
+    : null
 
   return (
-    <PageWrapper 
-      title="Inventory Management" 
-      subtitle="Track physical stock, assign items, and monitor availability."
+    <PageWrapper
+      title="Inventory (Maal Ka Hisaab)"
+      subtitle="Apne maal ka poora hisaab rakhen — dastiyab, qist par, aur bik chuka saman."
       actions={
-        <button 
+        <button
           onClick={() => setAddModalOpen(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
         >
-          <Plus size={16} /> Add Stock
+          <Plus size={16} /> Naya Maal Daalen
         </button>
       }
     >
       <div className="space-y-6">
-        
+
         {/* ── Summary Cards ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">Total Received</p>
-              <h3 className="text-2xl font-black text-slate-900">{currentSummary.total}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><Package size={20} /></div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">Available</p>
-              <h3 className="text-2xl font-black text-emerald-600">{currentSummary.available}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><CheckCircle2 size={20} /></div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">On Installment</p>
-              <h3 className="text-2xl font-black text-blue-600">{currentSummary.onInstallment}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><Bike size={20} /></div>
-          </div>
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mb-1">Completed</p>
-              <h3 className="text-2xl font-black text-slate-400">{currentSummary.completed}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400"><CheckCircle2 size={20} /></div>
-          </div>
+          <StatCard icon={Package}       label="Kul Maal"      value={currentStats?.total}          color="text-slate-900"   />
+          <StatCard icon={CheckCircle2}  label="Dastiyab"      value={currentStats?.available}      color="text-emerald-600" />
+          <StatCard icon={Bike}          label="Qist Par"      value={currentStats?.onInstallment}  color="text-blue-600"    />
+          <StatCard icon={TrendingDown}  label="Bik Gaya"      value={currentStats?.completed}      color="text-slate-400"   />
         </div>
 
         <div className="flex flex-col xl:flex-row gap-6">
-          
-          {/* ── Main Tables Area ── */}
+
+          {/* ── Main Table ── */}
           <div className="flex-1 erp-card overflow-hidden">
+            {/* Table toolbar */}
             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
+              {/* Tab switcher */}
               <div className="flex bg-slate-200/50 p-1 rounded-xl w-full sm:w-auto">
                 <button
                   onClick={() => setActiveTab('motorcycles')}
@@ -103,7 +166,7 @@ export default function InventoryPage() {
                     activeTab === 'motorcycles' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  <Bike size={16} /> Motorcycles
+                  <Bike size={15} /> Motorcycles
                 </button>
                 <button
                   onClick={() => setActiveTab('electronics')}
@@ -111,50 +174,77 @@ export default function InventoryPage() {
                     activeTab === 'electronics' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  <Smartphone size={16} /> Electronics
+                  <Smartphone size={15} /> Electronics
                 </button>
               </div>
 
+              {/* Search */}
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <div className="relative flex-1 sm:w-64">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder="Search inventory..." className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Maal search karein..."
+                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
                 </div>
-                <button className="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500">
-                  <Filter size={18} />
+                <button
+                  onClick={fetchData}
+                  className="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500 transition-colors"
+                  title="Refresh"
+                >
+                  <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
                 </button>
               </div>
             </div>
 
+            {/* Table */}
             <div className="overflow-x-auto">
-              {activeTab === 'motorcycles' ? (
+              {isLoading ? (
+                <div className="flex justify-center items-center h-48 text-slate-500 font-medium animate-pulse">
+                  Maal load ho raha hai...
+                </div>
+              ) : items.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-3">
+                  <Package size={40} className="opacity-30" />
+                  <p className="font-medium">Koi maal nahi mila</p>
+                  <p className="text-sm">"Naya Maal Daalen" button se stock shamil karein</p>
+                </div>
+              ) : activeTab === 'motorcycles' ? (
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="px-6 py-4">Bike Details</th>
+                      <th className="px-6 py-4">Motorcycle</th>
                       <th className="px-6 py-4">Engine / Chassis</th>
-                      <th className="px-6 py-4">Customer</th>
-                      <th className="px-6 py-4">Date Added</th>
-                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Gahak</th>
+                      <th className="px-6 py-4">Keemat</th>
+                      <th className="px-6 py-4">Haisiyat</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {MOCK_MOTO.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                    {pg.paginated.map(row => (
+                      <tr key={row._id} className="hover:bg-slate-50/80 transition-colors group">
                         <td className="px-6 py-4">
                           <div className="font-bold text-slate-900">{row.company} {row.model}</div>
-                          <div className="text-xs text-slate-500">Color: {row.color}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">Rang: {row.color || '—'}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="font-mono text-slate-700">{row.engineNo}</div>
-                          <div className="font-mono text-xs text-slate-500">{row.chassisNo}</div>
+                          <div className="font-mono text-slate-700 text-xs">{row.engineNo || '—'}</div>
+                          <div className="font-mono text-xs text-slate-400">{row.chassisNo || '—'}</div>
                         </td>
                         <td className="px-6 py-4">
-                          {row.customer ? <span className="font-medium text-blue-600 hover:underline cursor-pointer">{row.customer}</span> : <span className="text-slate-400 italic">Not Assigned</span>}
+                          {row.customerName
+                            ? <span className="font-medium text-blue-600">{row.customerName}</span>
+                            : <span className="text-slate-400 italic text-xs">Assign nahi hua</span>
+                          }
                         </td>
-                        <td className="px-6 py-4 text-slate-600">{formatDate(row.date)}</td>
+                        <td className="px-6 py-4 font-medium text-slate-700">
+                          {formatCurrency(row.purchasePrice)}
+                        </td>
                         <td className="px-6 py-4">
-                          <StatusBadge status={row.status === 'on_installment' ? 'active' : row.status === 'available' ? 'completed' : 'pending'} label={row.status.replace('_', ' ')} size="sm" />
+                          <StockBadge status={row.status} />
                         </td>
                       </tr>
                     ))}
@@ -162,29 +252,40 @@ export default function InventoryPage() {
                 </table>
               ) : (
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="px-6 py-4">Category</th>
-                      <th className="px-6 py-4">Product Details</th>
+                      <th className="px-6 py-4">Qisam</th>
+                      <th className="px-6 py-4">Samaan</th>
                       <th className="px-6 py-4">Serial No</th>
-                      <th className="px-6 py-4">Customer</th>
-                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Gahak</th>
+                      <th className="px-6 py-4">Keemat</th>
+                      <th className="px-6 py-4">Haisiyat</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {MOCK_ELEC.map(row => (
-                      <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-900">{row.category}</td>
+                    {pg.paginated.map(row => (
+                      <tr key={row._id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="font-bold text-slate-900">{row.brand} {row.model}</div>
-                          <div className="text-xs text-slate-500">Purchase: {formatCurrency(row.price)}</div>
-                        </td>
-                        <td className="px-6 py-4 font-mono text-slate-600">{row.serialNo}</td>
-                        <td className="px-6 py-4">
-                          {row.customer ? <span className="font-medium text-blue-600 hover:underline cursor-pointer">{row.customer}</span> : <span className="text-slate-400 italic">Not Assigned</span>}
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 text-purple-700 text-xs font-bold rounded-lg border border-purple-100">
+                            <Tag size={11} /> {row.elecType || row.company}
+                          </span>
                         </td>
                         <td className="px-6 py-4">
-                          <StatusBadge status={row.status === 'on_installment' ? 'active' : row.status === 'available' ? 'completed' : 'pending'} label={row.status.replace('_', ' ')} size="sm" />
+                          <div className="font-bold text-slate-900">{row.company} {row.model}</div>
+                          <div className="text-xs text-slate-500">Rang: {row.color || '—'}</div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-600 text-xs">{row.serialNo || '—'}</td>
+                        <td className="px-6 py-4">
+                          {row.customerName
+                            ? <span className="font-medium text-blue-600">{row.customerName}</span>
+                            : <span className="text-slate-400 italic text-xs">Assign nahi hua</span>
+                          }
+                        </td>
+                        <td className="px-6 py-4 font-medium text-slate-700">
+                          {formatCurrency(row.purchasePrice)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <StockBadge status={row.status} />
                         </td>
                       </tr>
                     ))}
@@ -192,120 +293,186 @@ export default function InventoryPage() {
                 </table>
               )}
             </div>
+            <Pagination {...pg} onPageChange={pg.setPage} label="items" />
           </div>
 
           {/* ── Stock Alerts ── */}
-          <div className="w-full xl:w-80 shrink-0 space-y-4">
+          <div className="w-full xl:w-72 shrink-0 space-y-4">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2 px-1">
               <AlertTriangle className="text-amber-500" size={18} /> Stock Alerts
             </h3>
             <div className="space-y-3">
-              {MOCK_ALERTS.map(alert => (
-                <div key={alert.id} className={`p-4 rounded-xl border text-sm ${
-                  alert.type === 'low_stock' 
-                    ? 'bg-red-50 border-red-100 text-red-800' 
-                    : 'bg-blue-50 border-blue-100 text-blue-800'
-                }`}>
-                  <div className="flex items-start gap-3">
-                    {alert.type === 'low_stock' ? <AlertTriangle size={18} className="shrink-0 mt-0.5 text-red-500" /> : <Clock size={18} className="shrink-0 mt-0.5 text-blue-500" />}
-                    <p className="font-medium leading-snug">{alert.message}</p>
-                  </div>
+              {alerts.length === 0 ? (
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm flex items-center gap-3">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <p className="font-medium">Sab theek hai! Koi low-stock alert nahi.</p>
                 </div>
-              ))}
+              ) : (
+                alerts.map(alert => (
+                  <div
+                    key={alert.id}
+                    className={`p-4 rounded-xl border text-sm ${
+                      alert.type === 'low_stock'
+                        ? 'bg-red-50 border-red-100 text-red-800'
+                        : 'bg-blue-50 border-blue-100 text-blue-800'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {alert.type === 'low_stock'
+                        ? <AlertTriangle size={18} className="shrink-0 mt-0.5 text-red-500" />
+                        : <Clock size={18} className="shrink-0 mt-0.5 text-blue-500" />
+                      }
+                      <p className="font-medium leading-snug">{alert.message}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          </div>
 
+            {/* Quick summary pills */}
+            {stats && (
+              <div className="mt-4 p-4 erp-card space-y-3">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Mujmooi Khulasa</h4>
+                <div className="flex justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-500">Motorcycles</span>
+                  <span className="font-bold text-slate-900">{stats.motorcycle.total}</span>
+                </div>
+                <div className="flex justify-between text-sm py-2 border-b border-slate-100">
+                  <span className="text-slate-500">Electronics</span>
+                  <span className="font-bold text-slate-900">{stats.electronics.total}</span>
+                </div>
+                <div className="flex justify-between text-sm py-2">
+                  <span className="text-slate-500">Kul Maal</span>
+                  <span className="font-black text-blue-600">{stats.motorcycle.total + stats.electronics.total}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* ── Add Stock Modal ── */}
       {addModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-lg font-bold text-slate-900">Add New Stock</h2>
-              <button onClick={() => setAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={20} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
+                  <ShoppingCart size={18} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Naya Maal Daalen</h2>
+                  <p className="text-xs text-slate-500">Inventory mein naya stock shamil karein</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setAddModalOpen(false); reset() }}
+                className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-1.5 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
             </div>
-            
-            <form onSubmit={handleSubmit(handleAddStock)} className="p-6 space-y-5">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Inventory Category</label>
-                <select {...register('category')} className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium">
+
+            <form onSubmit={handleSubmit(handleAddStock)} className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Category */}
+              <Field label="Qisam (Category)">
+                <select
+                  {...register('category')}
+                  className={INPUT_CLS}
+                >
                   <option value="motorcycle">Motorcycle</option>
                   <option value="electronics">Electronics (Mobile, AC, TV, etc)</option>
                 </select>
-              </div>
+              </Field>
 
               {isMotoModal ? (
-                <div className="grid grid-cols-2 gap-4 animate-fade-in">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Company</label>
-                    <input {...register('company')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" placeholder="Honda" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Model</label>
-                    <input {...register('model')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" placeholder="CD 70" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Color</label>
-                    <input {...register('color')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Distributor*</label>
-                    <select {...register('distributor')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
-                      <option>Ali Traders</option>
-                      <option>Zafar Autos</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Engine Number</label>
-                    <input {...register('engineNo')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Chassis Number</label>
-                    <input {...register('chassisNo')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Company *">
+                    <input {...register('company', { required: true })} placeholder="Honda" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Model *">
+                    <input {...register('model', { required: true })} placeholder="CD 70" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Rang (Color)">
+                    <input {...register('color')} placeholder="Red" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Distributor">
+                    <input {...register('distributor')} placeholder="Ali Traders" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Engine Number">
+                    <input {...register('engineNo')} placeholder="E-12345" className={`${INPUT_CLS} font-mono`} />
+                  </Field>
+                  <Field label="Chassis Number">
+                    <input {...register('chassisNo')} placeholder="C-98765" className={`${INPUT_CLS} font-mono`} />
+                  </Field>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-4 animate-fade-in">
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Product Type</label>
-                    <select {...register('elecType')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500">
-                      <option>Mobile Phone</option>
-                      <option>Air Conditioner</option>
-                      <option>LCD / TV</option>
-                      <option>Washing Machine</option>
-                      <option>Refrigerator</option>
-                    </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <Field label="Electronics Ki Qisam *">
+                      <select {...register('elecType')} className={INPUT_CLS}>
+                        <option value="Mobile Phone">Mobile Phone</option>
+                        <option value="Air Conditioner">Air Conditioner (AC)</option>
+                        <option value="LCD / TV">LCD / TV</option>
+                        <option value="Washing Machine">Washing Machine</option>
+                        <option value="Refrigerator">Refrigerator (Fridge)</option>
+                        <option value="Other">Kuch Aur</option>
+                      </select>
+                    </Field>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Brand</label>
-                    <input {...register('brand')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Model</label>
-                    <input {...register('model')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Serial Number / IMEI</label>
-                    <input {...register('serialNo')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Quantity</label>
-                    <input type="number" defaultValue={1} {...register('qty')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" />
+                  <Field label="Brand *">
+                    <input {...register('brand', { required: true })} placeholder="Samsung" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Model *">
+                    <input {...register('model', { required: true })} placeholder="Galaxy A54" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Rang (Color)">
+                    <input {...register('color')} placeholder="Black" className={INPUT_CLS} />
+                  </Field>
+                  <Field label="Tadaad (Qty)">
+                    <input
+                      type="number"
+                      min={1}
+                      {...register('qty')}
+                      className={INPUT_CLS}
+                    />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Serial No / IMEI">
+                      <input {...register('serialNo')} placeholder="SN-00123" className={`${INPUT_CLS} font-mono`} />
+                    </Field>
                   </div>
                 </div>
               )}
 
+              {/* Purchase Price */}
               <div className="pt-4 border-t border-slate-100">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Purchase Price (PKR)</label>
-                  <input type="number" {...register('purchasePrice')} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500" placeholder="0" />
-                </div>
+                <Field label="Khareed Keemat (PKR) *">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">Rs.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      {...register('purchasePrice', { required: true })}
+                      placeholder="0"
+                      className={`${INPUT_CLS} pl-10`}
+                    />
+                  </div>
+                </Field>
               </div>
 
-              <button type="submit" className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-sm">
-                Save to Inventory
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <><RefreshCw size={16} className="animate-spin" /> Save ho raha hai...</>
+                ) : (
+                  <><ShoppingCart size={16} /> Inventory Mein Shamil Karein</>
+                )}
               </button>
             </form>
           </div>

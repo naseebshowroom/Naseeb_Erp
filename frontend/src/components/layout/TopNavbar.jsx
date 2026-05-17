@@ -4,6 +4,7 @@ import {
   Menu, Search, Bell, ChevronDown,
   User, KeyRound, LogOut, X,
 } from 'lucide-react'
+import { useAuthStore } from '@/store/authStore'
 
 // ── Live clock ───────────────────────────────────────────
 function LiveClock() {
@@ -62,9 +63,9 @@ function NotificationPanel({ onClose }) {
         {NOTIFICATIONS.map(n => (
           <li key={n.id}
             className={`flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer
-              ${n.unread ? 'bg-blue-50/40' : ''}`}
+              ${n.unread ? 'bg-slate-100' : ''}`}
           >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${TYPE_COLORS[n.type]}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold bg-black text-white`}>
               {n.type === 'overdue' ? '!' : n.type === 'payment' ? '₨' : '▲'}
             </div>
             <div className="flex-1 min-w-0">
@@ -72,13 +73,13 @@ function NotificationPanel({ onClose }) {
               <p className="text-xs text-slate-400 mt-0.5">{n.time}</p>
             </div>
             {n.unread && (
-              <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
+              <div className="w-2 h-2 rounded-full bg-black flex-shrink-0 mt-1.5" />
             )}
           </li>
         ))}
       </ul>
       <div className="px-4 py-3 border-t border-slate-100 text-center">
-        <button className="text-xs text-blue-600 hover:underline font-medium">
+        <button className="text-xs text-black hover:underline font-medium">
           View all notifications
         </button>
       </div>
@@ -89,9 +90,10 @@ function NotificationPanel({ onClose }) {
 // ── Profile dropdown ─────────────────────────────────────
 function ProfileDropdown({ onClose }) {
   const navigate = useNavigate()
+  const { user, logout: logoutStore } = useAuthStore()
 
   function logout() {
-    localStorage.removeItem('erp_token')
+    logoutStore()
     navigate('/login')
   }
 
@@ -106,8 +108,8 @@ function ProfileDropdown({ onClose }) {
       rounded-2xl shadow-xl z-50 overflow-hidden">
       {/* User info */}
       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-        <p className="text-sm font-semibold text-slate-800">Muhammad Naseeb</p>
-        <p className="text-xs text-slate-500">Owner · admin@naseeb.com</p>
+        <p className="text-sm font-semibold text-slate-800">{user?.name || 'User'}</p>
+        <p className="text-xs text-slate-500 capitalize">{user?.role || 'Admin'} · {user?.email || 'admin@naseeb.com'}</p>
       </div>
       <ul className="py-1">
         {MENU.map(item => {
@@ -139,6 +141,7 @@ export default function TopNavbar({ onMenuClick, pageTitle }) {
   const [notifOpen, setNotifOpen]     = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const { user } = useAuthStore()
 
   const notifRef   = useRef(null)
   const profileRef = useRef(null)
@@ -184,7 +187,7 @@ export default function TopNavbar({ onMenuClick, pageTitle }) {
         {/* Search — desktop always visible, mobile toggled */}
         <div className={`${searchOpen ? 'flex' : 'hidden sm:flex'} items-center gap-2
           bg-slate-50 border border-slate-200 rounded-xl px-3 py-2
-          focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100
+          focus-within:border-black focus-within:ring-1 focus-within:ring-black
           transition-all duration-200`}
         >
           <Search size={15} className="text-slate-400 flex-shrink-0" />
@@ -244,9 +247,9 @@ export default function TopNavbar({ onMenuClick, pageTitle }) {
             className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl
               hover:bg-slate-100 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center
-              text-xs font-bold text-white flex-shrink-0">
-              MN
+            <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center
+              text-xs font-bold text-white flex-shrink-0 uppercase">
+              {user?.name ? user.name.substring(0, 2) : 'MN'}
             </div>
             <ChevronDown
               size={14}

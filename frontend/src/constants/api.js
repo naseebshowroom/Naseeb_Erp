@@ -28,7 +28,7 @@ export const API_ENDPOINTS = {
     CREATE:   '/installments',
     UPDATE:   (id) => `/installments/${id}`,
     OVERDUE:  '/installments/overdue',
-    STATS:    '/installments/stats',
+    STATS:    '/installments/stats/summary',
   },
 
   PAYMENTS: {
@@ -37,6 +37,7 @@ export const API_ENDPOINTS = {
     OVERDUE:         '/payments/overdue',
     COLLECTED_TODAY: '/payments/collected-today',
     SUMMARY_DAILY:   '/payments/summary/daily',
+    SUMMARY_MONTHLY: '/payments/summary/monthly',
     RECORD:          '/payments',
     RECEIPT:         (id) => `/payments/receipt/${id}`,
     DELETE:          (id) => `/payments/${id}`,
@@ -54,6 +55,7 @@ export const API_ENDPOINTS = {
   DISTRIBUTORS: {
     GET_ALL:   '/distributors',
     GET_ONE:   (id) => `/distributors/${id}`,
+    GET_STATS: '/distributors/stats',
     CREATE:    '/distributors',
     UPDATE:    (id) => `/distributors/${id}`,
     PAYMENTS:  (id) => `/distributors/${id}/payments`,
