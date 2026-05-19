@@ -30,10 +30,10 @@ const clause = (num, html) => `
 
 const sharedHeader = () => `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;
-              border-bottom:3px solid #1a1a6e;padding-bottom:10px;margin-bottom:14px;">
+              border-bottom:3px solid #1a1a6e;padding-bottom:10px;margin-bottom:14px;direction:ltr;">
 
     <!-- LEFT — English brand block -->
-    <div style="direction:ltr;min-width:175px;">
+    <div style="direction:ltr;min-width:175px;text-align:left;">
       <div style="background:#1a1a6e;color:#fff;padding:5px 14px;font-weight:900;
                   font-size:17px;display:inline-block;letter-spacing:1px;
                   font-family:'Times New Roman',serif;">NASEEB</div>
@@ -42,7 +42,7 @@ const sharedHeader = () => `
       <div style="font-size:10px;color:#333;font-family:'Times New Roman',serif;">
         Ph: 0333-7971303 / 0333-7973444
       </div>
-      <div class="u" style="font-size:10px;color:#333;line-height:1.8;">آغا عباس مارکیٹ خضدار</div>
+      <div class="u" style="font-size:10px;color:#333;line-height:1.8;direction:rtl;text-align:left;">آغا عباس مارکیٹ خضدار</div>
     </div>
 
     <!-- RIGHT — Urdu brand block -->
@@ -53,59 +53,59 @@ const sharedHeader = () => `
   </div>`;
 
 const titleBox = () => `
-  <div style="text-align:center;margin:12px 0 16px;">
+  <div style="text-align:center;margin:12px 0 16px;direction:ltr;">
     <div style="border:2.5px solid #1a1a6e;display:inline-block;padding:6px 52px;">
-      <span class="uh" style="font-size:28px;color:#1a1a6e;">ایگریمنٹ</span>
+      <span class="uh" style="font-size:28px;color:#1a1a6e;direction:rtl;unicode-bidi:isolate;">ایگریمنٹ</span>
     </div>
   </div>`;
 
 const infoRow = ({ accountNumber, customerName, date }) => `
   <table style="width:100%;border-collapse:collapse;border:1.5px solid #1a1a6e;
-                direction:rtl;margin:10px 0;">
+                direction:ltr;margin:10px 0;">
     <tr>
-      <td style="width:33%;border:1px solid #1a1a6e;padding:7px 10px;">
-        <div class="u"  style="font-size:11px;font-weight:700;line-height:1.8;">اکاؤنٹ نمبر</div>
-        <div class="en" style="font-size:13px;">${accountNumber}</div>
+      <td style="width:33%;border:1px solid #1a1a6e;padding:7px 10px;text-align:left;">
+        <div class="u"  style="font-size:11px;font-weight:700;line-height:1.8;direction:rtl;text-align:left;">اکاؤنٹ نمبر</div>
+        <div class="en" style="font-size:13px;font-weight:700;">${accountNumber}</div>
       </td>
       <td style="width:34%;border:1px solid #1a1a6e;padding:7px 10px;text-align:center;">
-        <div class="u"  style="font-size:11px;font-weight:700;line-height:1.8;">منجانب خریدار</div>
+        <div class="u"  style="font-size:11px;font-weight:700;line-height:1.8;direction:rtl;text-align:center;">منجانب خریدار</div>
         <div style="font-size:13px;font-weight:700;">${customerName}</div>
       </td>
-      <td style="width:33%;border:1px solid #1a1a6e;padding:7px 10px;">
-        <div class="u"  style="font-size:11px;font-weight:700;line-height:1.8;">تاریخ</div>
-        <div class="en" style="font-size:13px;">${date}</div>
+      <td style="width:33%;border:1px solid #1a1a6e;padding:7px 10px;text-align:right;">
+        <div class="u"  style="font-size:11px;font-weight:700;line-height:1.8;direction:rtl;text-align:right;">تاریخ</div>
+        <div class="en" style="font-size:13px;font-weight:700;">${date}</div>
       </td>
     </tr>
   </table>`;
 
 const financialTable = ({ totalInstallments, perInstallmentAmount, remainingAmount, advanceAmount, installmentPrice }) => `
   <table style="width:100%;border-collapse:collapse;border:1.5px solid #1a1a6e;
-                direction:rtl;margin:16px 0;">
+                direction:ltr;margin:16px 0;">
     <thead>
       <tr style="background:#e8eaf6;">
-        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;">مدت (ماہ)</th>
-        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;">قسط</th>
-        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;">بقایا</th>
-        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;">ایڈوانس</th>
-        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;">قسط قیمت</th>
+        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;direction:rtl;">قسط قیمت</th>
+        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;direction:rtl;">ایڈوانس</th>
+        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;direction:rtl;">بقایا</th>
+        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;direction:rtl;">قسط</th>
+        <th class="u" style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-size:13px;direction:rtl;">مدت (ماہ)</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">${totalInstallments}</td>
-        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(perInstallmentAmount)}</td>
-        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(remainingAmount)}</td>
-        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(advanceAmount)}</td>
         <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(installmentPrice)}</td>
+        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(advanceAmount)}</td>
+        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(remainingAmount)}</td>
+        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">Rs. ${fmt(perInstallmentAmount)}</td>
+        <td style="border:1px solid #1a1a6e;padding:8px;text-align:center;font-weight:700;font-size:14px;">${totalInstallments}</td>
       </tr>
     </tbody>
   </table>`;
 
 const guarantorSection = ({ guarantor1 = {}, guarantor2 = {} }) => `
   <!-- Guarantor title -->
-  <div style="text-align:center;margin:16px 0 10px;">
+  <div style="text-align:center;margin:16px 0 10px;direction:ltr;">
     <div style="border:2px solid #1a1a6e;display:inline-block;padding:5px 44px;background:#f0f0ff;">
-      <span class="uh" style="font-size:20px;color:#1a1a6e;">ضامن</span>
+      <span class="uh" style="font-size:20px;color:#1a1a6e;direction:rtl;unicode-bidi:isolate;">ضامن</span>
     </div>
   </div>
 
@@ -148,18 +148,18 @@ const guarantorSection = ({ guarantor1 = {}, guarantor2 = {} }) => `
 
   <!-- Guarantor clause -->
   <div class="u" style="border-top:1px solid #ddd;margin-top:10px;padding-top:10px;
-                         font-size:12px;color:#1a1a6e;">
+                         font-size:12px;color:#1a1a6e;direction:rtl;">
     ضامنان مذکورہ اقرار کرتے ہیں کہ اگر خریدار نے قسط ادا نہ کی تو وہ خود قسط ادا کریں گے اور
     خریدار کو مال واپس کرنے پر مجبور کریں گے۔
   </div>`;
 
 const signatureRow = () => `
   <hr style="border:1.5px solid #1a1a6e;margin:16px 0;">
-  <div style="display:flex;justify-content:space-between;direction:rtl;gap:16px;margin-top:8px;">
+  <div style="display:flex;justify-content:space-between;direction:ltr;gap:16px;margin-top:8px;">
     ${['دستخط فروخت کنندہ اینڈ شوروم', 'دستخط خریدار', 'خریدار کا نام'].map(label => `
       <div style="flex:1;text-align:center;">
         <div style="border-bottom:1px solid #333;min-height:36px;margin-bottom:6px;"></div>
-        <div class="u" style="font-size:11px;color:#1a1a6e;line-height:1.8;">${label}</div>
+        <div class="u" style="font-size:11px;color:#1a1a6e;line-height:1.8;direction:rtl;text-align:center;">${label}</div>
       </div>`).join('')}
   </div>`;
 
@@ -262,23 +262,23 @@ export const motorcycleAgreementHTML = (data) => {
   // Motorcycle detail table
   const detailTable = `
     <table style="width:100%;border-collapse:collapse;border:1.5px solid #1a1a6e;
-                  direction:rtl;margin:12px 0;">
+                  direction:ltr;margin:12px 0;">
       <thead>
         <tr style="background:#e8eaf6;">
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">کمپنی</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">ماڈل</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">رنگ</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">انجن نمبر</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">چیسس نمبر</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">چیسس نمبر</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">انجن نمبر</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">رنگ</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">ماڈل</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">کمپنی</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${bikeCompany}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${bikeModel}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${bikeColor}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${engineNumber}</td>
           <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${chassisNumber}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${engineNumber}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${bikeColor}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${bikeModel}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:13px;">${bikeCompany}</td>
         </tr>
       </tbody>
     </table>`;
@@ -331,27 +331,27 @@ export const carAgreementHTML = (data) => {
   // Car detail table
   const detailTable = `
     <table style="width:100%;border-collapse:collapse;border:1.5px solid #1a1a6e;
-                  direction:rtl;margin:12px 0;">
+                  direction:ltr;margin:12px 0;">
       <thead>
         <tr style="background:#e8eaf6;">
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">کمپنی</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">ماڈل</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">سال</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">رنگ</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">انجن نمبر</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">چیسس نمبر</th>
-          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;">رجسٹریشن</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">رجسٹریشن</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">چیسس نمبر</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">انجن نمبر</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">رنگ</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">سال</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">ماڈل</th>
+          <th class="u" style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-size:12px;direction:rtl;">کمپنی</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carMake}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carModel}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carYear}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carColor}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${engineNumber}</td>
-          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${chassisNumber}</td>
           <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${registrationNumber}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${chassisNumber}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${engineNumber}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carColor}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carYear}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carModel}</td>
+          <td style="border:1px solid #1a1a6e;padding:7px;text-align:center;font-weight:700;font-size:12px;">${carMake}</td>
         </tr>
       </tbody>
     </table>`;
@@ -395,12 +395,22 @@ export const saleReceiptHTML = (data) => {
     receivedCash    = 0,
     pendingCash     = 0,
     totalRupees     = 0,
+    receiptBrands   = 'Honda / Super Power / Unique / Impress / Express / Galaxy / United',
+    receiptColors   = 'Red / Black / Selvar / Blue',
   } = data;
 
   const f = (n) => Math.round(Number(n) || 0).toLocaleString('en-PK');
 
+  // Brand options - underline the selected one
+  const brandOpts = receiptBrands.split(/[,\/]+/).map(b => b.trim()).filter(Boolean);
+  const brandDisplay = brandOpts.map(b =>
+    b.toLowerCase() === (bikeCompany || '').toLowerCase()
+      ? `<strong style="text-decoration:underline;font-size:15px;">${b}</strong>`
+      : b
+  ).join(' &nbsp;/&nbsp; ');
+
   // Colour options — underline the selected one
-  const colorOpts = ['Red', 'Black', 'Selvar', 'Blue'];
+  const colorOpts = receiptColors.split(/[,\/]+/).map(c => c.trim()).filter(Boolean);
   const colorDisplay = colorOpts.map(c =>
     c.toLowerCase() === (bikeColor || '').toLowerCase()
       ? `<strong style="text-decoration:underline;font-size:14px;">${c}</strong>`
@@ -549,7 +559,7 @@ export const saleReceiptHTML = (data) => {
       <div style="border-top:1.5px solid #1a1a6e;border-bottom:1.5px solid #1a1a6e;
                   text-align:center;padding:5px 0;margin:10px 0;">
         <span style="font-size:14px;font-weight:900;font-style:italic;color:#1a1a6e;">
-          Honda &nbsp;/&nbsp; Super Power &nbsp;/&nbsp; Unique &nbsp;/&nbsp; Impress &nbsp;/&nbsp; Express &nbsp;/&nbsp; Glaxy &nbsp;/&nbsp; United
+          ${brandDisplay}
         </span>
       </div>
 
@@ -637,44 +647,78 @@ export const cashSaleReceiptHTML = (data) => {
   } = data;
   const f = (n) => `Rs. ${Math.round(Number(n) || 0).toLocaleString('en-PK')}`;
   const total = Number(installmentPrice) + Number(registrationFee);
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:'Times New Roman',serif;color:#1a1a6e;margin:0;padding:20px;}
-    .hdr{border-bottom:4px solid #1a1a6e;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
-    .badge{background:#1a1a6e;color:#fff;padding:3px 10px;font-size:12px;font-weight:700;letter-spacing:1px;display:inline-block;}
-    .title-box{text-align:center;margin:14px 0;}
-    .title-box span{border:2.5px solid #1a1a6e;padding:6px 44px;font-size:20px;font-weight:900;letter-spacing:2px;display:inline-block;}
-    .row{display:flex;gap:8px;margin-bottom:10px;align-items:baseline;}
-    .row label{font-weight:700;font-style:italic;min-width:140px;flex-shrink:0;font-size:13px;}
-    .row span{flex:1;border-bottom:1.5px solid #333;font-size:13px;font-weight:700;padding-bottom:2px;}
-    .total-box{background:#f0f0ff;border:2px solid #1a1a6e;padding:10px 16px;margin:14px 0;text-align:center;font-size:18px;font-weight:900;}
-    .note{background:#fff8e1;border-left:4px solid #f59e0b;padding:10px 14px;margin:14px 0;font-size:12px;}
-    .sig-block{margin-top:40px;display:flex;justify-content:space-between;}
-    .sig-line{border-top:1.5px solid #333;margin-top:36px;padding-top:6px;font-size:11px;color:#555;}
-  </style></head><body>
-  <div class="hdr">
-    <div><div class="badge">NASEEB</div><div style="font-size:11px;font-weight:700;">AUTOS &amp; SHOWROOM</div><div style="font-size:10px;color:#333;">Ph: 0333-7971303</div></div>
-    <div style="text-align:center;"><div style="font-size:13px;font-weight:900;text-transform:uppercase;">SALE RECEIPT (CASH)</div><div style="font-size:10px;color:#555;">نقد فروخت رسید</div></div>
-    <div style="text-align:right;font-size:12px;"><div><b>Date:</b> ${date}</div><div><b>Khata #:</b> ${khataNumber||'—'}</div><div><b>Sr.#:</b> ${serialNumber}</div></div>
-  </div>
-  <div class="title-box"><span>CASH SALE RECEIPT</span></div>
-  <div class="row"><label>Customer Name:</label><span>${customerName}</span></div>
-  <div class="row"><label>Father's Name:</label><span>${fatherName}</span></div>
-  <div class="row"><label>CNIC:</label><span>${cnic||'N/A'}</span></div>
-  <div class="row"><label>Phone:</label><span>${phone}</span></div>
-  <div class="row"><label>Address:</label><span>${address}</span></div>
-  <hr style="border:1.5px solid #1a1a6e;margin:14px 0;">
-  <div class="row"><label>Item:</label><span>${brand} ${model}${color?' — '+color:''}</span></div>
-  ${engineNumber?`<div class="row"><label>Engine #:</label><span>${engineNumber}</span></div>`:''}
-  ${chassisNumber?`<div class="row"><label>Chassis #:</label><span>${chassisNumber}</span></div>`:''}
-  <div class="total-box">Total Sale Price / کل قیمت: ${f(installmentPrice)}
-    ${registrationFee>0?`<div style="font-size:13px;margin-top:4px;">Registration Fee: ${f(registrationFee)}</div><div style="font-size:16px;margin-top:6px;border-top:1px solid #1a1a6e;padding-top:6px;">TOTAL PAID: ${f(total)}</div>`:''}
-  </div>
-  <div class="note">✅ Full payment received. No installments pending.<br><b>نقد رقم مکمل وصول ہو گئی۔ کوئی قسط باقی نہیں۔</b></div>
-  ${isOwnerCopy&&investorName?`<div style="font-size:11px;color:#666;text-align:right;">Investor: <b>${investorName}</b></div>`:''}
-  <div class="sig-block">
-    <div style="text-align:center;min-width:140px;"><div class="sig-line">Customer Signature<br>دستخط خریدار</div></div>
-    <div style="text-align:center;min-width:140px;"><div class="sig-line">For: NASEEB AUTOS &amp; SHOWROOM</div></div>
-  </div></body></html>`;
+  
+  return `
+  <div style="font-family:'Times New Roman',serif;color:#1a1a6e;padding:20px;direction:ltr;">
+    <style>
+      .cr-hdr { border-bottom:4px solid #1a1a6e;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;direction:ltr; }
+      .cr-badge { background:#1a1a6e;color:#fff;padding:3px 10px;font-size:12px;font-weight:700;letter-spacing:1px;display:inline-block; }
+      .cr-title-box { text-align:center;margin:14px 0;direction:ltr; }
+      .cr-title-box span { border:2.5px solid #1a1a6e;padding:6px 44px;font-size:20px;font-weight:900;letter-spacing:2px;display:inline-block; }
+      .cr-row { display:flex;gap:8px;margin-bottom:10px;align-items:baseline;direction:ltr; }
+      .cr-row label { font-weight:700;font-style:italic;min-width:140px;flex-shrink:0;font-size:13px;text-align:left; }
+      .cr-row span { flex:1;border-bottom:1.5px solid #333;font-size:13px;font-weight:700;padding-bottom:2px; }
+      .cr-total-box { background:#f0f0ff;border:2px solid #1a1a6e;padding:10px 16px;margin:14px 0;text-align:center;font-size:18px;font-weight:900;direction:ltr; }
+      .cr-note { background:#fff8e1;border-left:4px solid #f59e0b;padding:10px 14px;margin:14px 0;font-size:12px;direction:ltr; }
+      .cr-sig-block { margin-top:40px;display:flex;justify-content:space-between;direction:ltr; }
+      .cr-sig-line { border-top:1.5px solid #333;margin-top:36px;padding-top:6px;font-size:11px;color:#555;text-align:center; }
+    </style>
+
+    <div class="cr-hdr">
+      <div>
+        <div class="cr-badge">NASEEB</div>
+        <div style="font-size:11px;font-weight:700;">AUTOS &amp; SHOWROOM</div>
+        <div style="font-size:10px;color:#333;">Ph: 0333-7971303</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:13px;font-weight:900;text-transform:uppercase;">SALE RECEIPT (CASH)</div>
+        <div class="urdu" style="font-size:11px;color:#555;direction:rtl;">نقد فروخت رسید</div>
+      </div>
+      <div style="text-align:right;font-size:12px;direction:ltr;">
+        <div><b>Date:</b> ${date}</div>
+        <div><b>Khata #:</b> ${khataNumber||'—'}</div>
+        <div><b>Sr.#:</b> ${serialNumber}</div>
+      </div>
+    </div>
+
+    <div class="cr-title-box"><span>CASH SALE RECEIPT</span></div>
+
+    <div class="cr-row"><label>Customer Name:</label><span>${customerName}</span></div>
+    <div class="cr-row"><label>Father's Name:</label><span>${fatherName}</span></div>
+    <div class="cr-row"><label>CNIC:</label><span>${cnic||'N/A'}</span></div>
+    <div class="cr-row"><label>Phone:</label><span>${phone}</span></div>
+    <div class="cr-row"><label>Address:</label><span>${address}</span></div>
+
+    <hr style="border:1.5px solid #1a1a6e;margin:14px 0;">
+
+    <div class="cr-row"><label>Item:</label><span>${brand} ${model}${color?' — '+color:''}</span></div>
+    ${engineNumber?`<div class="cr-row"><label>Engine #:</label><span>${engineNumber}</span></div>`:''}
+    ${chassisNumber?`<div class="cr-row"><label>Chassis #:</label><span>${chassisNumber}</span></div>`:''}
+
+    <div class="cr-total-box">
+      Total Sale Price / <span class="urdu" style="font-size:15px;direction:rtl;">کل قیمت</span>: ${f(installmentPrice)}
+      ${registrationFee>0?`<div style="font-size:13px;margin-top:4px;">Registration Fee: ${f(registrationFee)}</div><div style="font-size:16px;margin-top:6px;border-top:1px solid #1a1a6e;padding-top:6px;">TOTAL PAID: ${f(total)}</div>`:''}
+    </div>
+
+    <div class="cr-note">
+      ✅ Full payment received. No installments pending.<br>
+      <span class="urdu" style="font-size:12px;direction:rtl;">نقد رقم مکمل وصول ہو گئی۔ کوئی قسط باقی نہیں۔</span>
+    </div>
+
+    ${isOwnerCopy&&investorName?`<div style="font-size:11px;color:#666;text-align:right;direction:ltr;">Investor: <b>${investorName}</b></div>`:''}
+
+    <div class="cr-sig-block">
+      <div style="text-align:center;min-width:140px;">
+        <div class="cr-sig-line">
+          Customer Signature<br>
+          <span class="urdu" style="font-size:11px;direction:rtl;">دستخط خریدار</span>
+        </div>
+      </div>
+      <div style="text-align:center;min-width:140px;">
+        <div class="cr-sig-line">For: NASEEB AUTOS &amp; SHOWROOM</div>
+      </div>
+    </div>
+  </div>`;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -700,52 +744,85 @@ export const customerStatementHTML = (data) => {
     <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;font-weight:700;color:${clr(s.status)};">${icon(s.status)}${s.status==='paid'&&s.paidDate?' — '+new Date(s.paidDate).toLocaleDateString('en-GB'):''}</td>
     <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;color:#555;">${s.collectedBy?.name||''}</td>
   </tr>`).join('');
-  const missedRows=schedule.filter(s=>s.status==='missed').map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:4px 0;"><span style="font-size:12px;color:#991b1b;font-weight:700;">❌ ${new Date(s.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span><span style="font-size:12px;font-weight:700;">${f(perInstallmentAmount)}</span></div>`).join('');
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:'Times New Roman',serif;color:#111;margin:0;padding:20px;font-size:13px;}
-    table{border-collapse:collapse;width:100%;}th{background:#e8eaf6;border:1px solid #1a1a6e;padding:8px;font-size:12px;}
-    .hdr{background:#1a1a6e;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
-    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0;}
-    .card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center;}
-    .card .v{font-size:15px;font-weight:900;margin-top:4px;}
-    .info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;}
-    .irow{display:flex;gap:6px;margin-bottom:6px;}
-    .irow label{font-weight:700;min-width:110px;color:#555;font-size:12px;}
-    .irow span{font-weight:700;font-size:12px;}
-    .sec{font-weight:900;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#1a1a6e;border-bottom:2px solid #1a1a6e;padding-bottom:4px;margin:16px 0 10px;}
-    .arr{background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px;margin:12px 0;}
-  </style></head><body>
-  <div class="hdr"><div><div style="font-size:18px;font-weight:900;">NASEEB AUTOS &amp; SHOWROOM</div><div style="font-size:11px;opacity:.8;">Ph: 0333-7971303 | Khuzdar</div></div><div style="text-align:right;"><div style="font-size:13px;font-weight:700;">CUSTOMER STATEMENT / KHATA</div><div style="font-size:11px;opacity:.8;">Date: ${date}</div></div></div>
-  <div class="info"><div>
-    <div class="irow"><label>Customer:</label><span>${customerName}</span></div>
-    <div class="irow"><label>Father:</label><span>${fatherName}</span></div>
-    <div class="irow"><label>Phone:</label><span>${phone}</span></div>
-    <div class="irow"><label>CNIC:</label><span>${cnic||'N/A'}</span></div>
-  </div><div>
-    <div class="irow"><label>Khata #:</label><span>${khataNumber||'—'}</span></div>
-    <div class="irow"><label>Item:</label><span>${brand} ${model}${color?' ('+color+')':''}</span></div>
-    ${engineNumber?`<div class="irow"><label>Engine #:</label><span>${engineNumber}</span></div>`:''}
-    ${chassisNumber?`<div class="irow"><label>Chassis #:</label><span>${chassisNumber}</span></div>`:''}
-  </div></div>
-  <div style="background:#f0f0ff;border:1.5px solid #1a1a6e;padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0;">
-    <div><div style="font-size:11px;color:#555;">Total Price</div><div style="font-size:16px;font-weight:900;color:#1a1a6e;">${f(installmentPrice)}</div></div>
-    <div><div style="font-size:11px;color:#555;">Advance</div><div style="font-size:15px;font-weight:700;">${advanceAmount>0?f(advanceAmount):'No Advance'}</div></div>
-    <div><div style="font-size:11px;color:#555;">Per Qist</div><div style="font-size:15px;font-weight:700;">${f(perInstallmentAmount)} (${scheduleType})</div></div>
-  </div>
-  <div class="sec">Summary</div>
-  <div class="grid4">
-    <div class="card"><div style="font-size:11px;color:#166534;">Paid</div><div class="v" style="color:#166534;">${f(summary.totalPaid)}</div></div>
-    <div class="card"><div style="font-size:11px;color:#991b1b;">Missed</div><div class="v" style="color:#991b1b;">${f(summary.totalMissed)}</div></div>
-    <div class="card"><div style="font-size:11px;color:#92400e;">Pending</div><div class="v" style="color:#92400e;">${f(summary.totalPending)}</div></div>
-    <div class="card"><div style="font-size:11px;color:#dc2626;">Arrears</div><div class="v" style="color:#dc2626;">${f(summary.arrears)}</div></div>
-  </div>
-  <div class="sec">Payment History</div>
-  <table><thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Collected By</th></tr></thead><tbody>${rows}</tbody></table>
-  ${missedRows?`<div class="arr"><div style="font-weight:900;color:#dc2626;font-size:13px;margin-bottom:8px;">BAQAYA TAREEKHAIN (MISSED DATES)</div>${missedRows}<div style="margin-top:8px;padding-top:8px;border-top:1px solid #dc2626;font-weight:900;color:#dc2626;">Total Baqaya: ${f(summary.arrears)}</div></div>`:''}
-  <div style="margin-top:20px;display:flex;justify-content:space-between;">
-    <div style="font-size:11px;color:#555;">Investor: ${investorName||'Owner'}</div>
-    <div style="text-align:center;min-width:160px;"><div style="border-top:1px solid #333;margin-top:36px;padding-top:6px;font-size:11px;">Owner Signature</div></div>
-  </div></body></html>`;
+  const missedRows=schedule.filter(s=>s.status==='missed').map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:4px 0;direction:ltr;"><span style="font-size:12px;color:#991b1b;font-weight:700;">❌ ${new Date(s.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span><span style="font-size:12px;font-weight:700;">${f(perInstallmentAmount)}</span></div>`).join('');
+
+  return `
+  <div style="font-family:'Times New Roman',serif;color:#111;padding:20px;font-size:13px;direction:ltr;">
+    <style>
+      .stmt-table { border-collapse:collapse;width:100%;direction:ltr; }
+      .stmt-table th { background:#e8eaf6;border:1px solid #1a1a6e;padding:8px;font-size:12px;text-align:left; }
+      .stmt-hdr { background:#1a1a6e;color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;direction:ltr; }
+      .stmt-grid4 { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0;direction:ltr; }
+      .stmt-card { background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center;direction:ltr; }
+      .stmt-card .v { font-size:15px;font-weight:900;margin-top:4px; }
+      .stmt-info { display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;direction:ltr; }
+      .stmt-irow { display:flex;gap:6px;margin-bottom:6px;direction:ltr; }
+      .stmt-irow label { font-weight:700;min-width:110px;color:#555;font-size:12px; }
+      .stmt-irow span { font-weight:700;font-size:12px; }
+      .stmt-sec { font-weight:900;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:#1a1a6e;border-bottom:2px solid #1a1a6e;padding-bottom:4px;margin:16px 0 10px;direction:ltr; }
+      .stmt-arr { background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:12px;margin:12px 0;direction:ltr; }
+    </style>
+
+    <div class="stmt-hdr">
+      <div>
+        <div style="font-size:18px;font-weight:900;direction:ltr;">NASEEB AUTOS &amp; SHOWROOM</div>
+        <div style="font-size:11px;opacity:.8;direction:ltr;">Ph: 0333-7971303 | Khuzdar</div>
+      </div>
+      <div style="text-align:right;direction:ltr;">
+        <div style="font-size:13px;font-weight:700;">CUSTOMER STATEMENT / KHATA</div>
+        <div style="font-size:11px;opacity:.8;">Date: ${date}</div>
+      </div>
+    </div>
+
+    <div class="stmt-info">
+      <div>
+        <div class="stmt-irow"><label>Customer:</label><span>${customerName}</span></div>
+        <div class="stmt-irow"><label>Father:</label><span>${fatherName}</span></div>
+        <div class="stmt-irow"><label>Phone:</label><span>${phone}</span></div>
+        <div class="stmt-irow"><label>CNIC:</label><span>${cnic||'N/A'}</span></div>
+      </div>
+      <div>
+        <div class="stmt-irow"><label>Khata #:</label><span>${khataNumber||'—'}</span></div>
+        <div class="stmt-irow"><label>Item:</label><span>${brand} ${model}${color?' ('+color+')':''}</span></div>
+        ${engineNumber?`<div class="stmt-irow"><label>Engine #:</label><span>${engineNumber}</span></div>`:''}
+        ${chassisNumber?`<div class="stmt-irow"><label>Chassis #:</label><span>${chassisNumber}</span></div>`:''}
+      </div>
+    </div>
+
+    <div style="background:#f0f0ff;border:1.5px solid #1a1a6e;padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0;direction:ltr;">
+      <div><div style="font-size:11px;color:#555;">Total Price</div><div style="font-size:16px;font-weight:900;color:#1a1a6e;">${f(installmentPrice)}</div></div>
+      <div><div style="font-size:11px;color:#555;">Advance</div><div style="font-size:15px;font-weight:700;">${advanceAmount>0?f(advanceAmount):'No Advance'}</div></div>
+      <div><div style="font-size:11px;color:#555;">Per Qist</div><div style="font-size:15px;font-weight:700;">${f(perInstallmentAmount)} (${scheduleType})</div></div>
+    </div>
+
+    <div class="stmt-sec">Summary</div>
+    <div class="stmt-grid4">
+      <div class="stmt-card"><div style="font-size:11px;color:#166534;">Paid</div><div class="v" style="color:#166534;">${f(summary.totalPaid)}</div></div>
+      <div class="stmt-card"><div style="font-size:11px;color:#991b1b;">Missed</div><div class="v" style="color:#991b1b;">${f(summary.totalMissed)}</div></div>
+      <div class="stmt-card"><div style="font-size:11px;color:#92400e;">Pending</div><div class="v" style="color:#92400e;">${f(summary.totalPending)}</div></div>
+      <div class="stmt-card"><div style="font-size:11px;color:#dc2626;">Arrears</div><div class="v" style="color:#dc2626;">${f(summary.arrears)}</div></div>
+    </div>
+
+    <div class="stmt-sec">Payment History</div>
+    <table class="stmt-table">
+      <thead>
+        <tr>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Date</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;text-align:center;">Amount</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Status</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Collected By</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    ${missedRows?`<div class="stmt-arr"><div style="font-weight:900;color:#dc2626;font-size:13px;margin-bottom:8px;">BAQAYA TAREEKHAIN (MISSED DATES)</div>${missedRows}<div style="margin-top:8px;padding-top:8px;border-top:1px solid #dc2626;font-weight:900;color:#dc2626;">Total Baqaya: ${f(summary.arrears)}</div></div>`:''}
+
+    <div style="margin-top:20px;display:flex;justify-content:space-between;direction:ltr;">
+      <div style="font-size:11px;color:#555;">Investor: ${investorName||'Owner'}</div>
+      <div style="text-align:center;min-width:160px;"><div style="border-top:1px solid #333;margin-top:36px;padding-top:6px;font-size:11px;">Owner Signature</div></div>
+    </div>
+  </div>`;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -762,27 +839,505 @@ export const distributorLetterHTML = (data) => {
   const body=letterType==='return'
     ?'We are returning the following vehicle to your stock. Please confirm receipt.'
     :'We hereby confirm the purchase of the following vehicle from your dealership.';
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:'Times New Roman',serif;color:#1a1a6e;margin:0;padding:40px;font-size:14px;max-width:680px;}
-    .hdr{border-bottom:3px solid #1a1a6e;padding-bottom:12px;margin-bottom:24px;display:flex;justify-content:space-between;}
-    table{width:100%;border-collapse:collapse;margin:20px 0;}
-    td{padding:8px 12px;border:1px solid #1a1a6e;}
-    td:first-child{font-weight:700;width:140px;background:#f0f0ff;}
-  </style></head><body>
-  <div class="hdr"><div><div style="font-size:20px;font-weight:900;">NASEEB AUTOS &amp; SHOWROOM</div><div style="font-size:11px;color:#555;">Ph: 0333-7971303 | Khuzdar</div></div><div style="text-align:right;font-size:12px;">Date: <b>${date}</b></div></div>
-  <p><b>To:</b> ${distributorName}${distributorAddress?'<br><span style="color:#555;">'+distributorAddress+'</span>':''}</p>
-  <p style="font-size:15px;font-weight:700;border-bottom:1px solid #ddd;padding-bottom:8px;">Subject: ${subject}</p>
-  <p>${body}</p>
-  <table>
-    <tr><td>Brand</td><td><b>${brand}</b></td></tr>
-    <tr><td>Model</td><td><b>${model}</b></td></tr>
-    <tr><td>Color</td><td><b>${color||'—'}</b></td></tr>
-    <tr><td>Engine #</td><td><b>${engineNumber||'—'}</b></td></tr>
-    <tr><td>Chassis #</td><td><b>${chassisNumber||'—'}</b></td></tr>
-    <tr><td>Date Supplied</td><td><b>${dateSupplied?new Date(dateSupplied).toLocaleDateString('en-GB'):'—'}</b></td></tr>
-    <tr><td>Amount</td><td><b style="font-size:15px;">${f(unitPrice)}</b></td></tr>
-  </table>
-  <p style="font-size:12px;color:#555;">${letterType==='return'?'The customer has returned/defaulted and we are returning this vehicle per our agreement.':'This letter serves as purchase confirmation. Please keep for your records.'}</p>
-  <div style="margin-top:60px;text-align:right;"><p>Regards,</p><div style="margin-top:40px;border-top:1px solid #333;width:200px;display:inline-block;padding-top:6px;font-size:12px;">${ownerName}<br>NASEEB AUTOS &amp; SHOWROOM</div></div>
-  </body></html>`;
+  return `
+  <div style="font-family:'Times New Roman',serif;color:#1a1a6e;padding:40px;font-size:14px;max-width:680px;direction:ltr;">
+    <style>
+      .dl-table { width:100%;border-collapse:collapse;margin:20px 0;direction:ltr; }
+      .dl-table td { padding:8px 12px;border:1px solid #1a1a6e; }
+      .dl-table td:first-child { font-weight:700;width:140px;background:#f0f0ff; }
+      .dl-hdr { border-bottom:3px solid #1a1a6e;padding-bottom:12px;margin-bottom:24px;display:flex;justify-content:space-between;direction:ltr; }
+    </style>
+
+    <div class="dl-hdr">
+      <div>
+        <div style="font-size:20px;font-weight:900;direction:ltr;">NASEEB AUTOS &amp; SHOWROOM</div>
+        <div style="font-size:11px;color:#555;direction:ltr;">Ph: 0333-7971303 | Khuzdar</div>
+      </div>
+      <div style="text-align:right;font-size:12px;direction:ltr;">
+        Date: <b>${date}</b>
+      </div>
+    </div>
+
+    <p style="direction:ltr;"><b>To:</b> ${distributorName}${distributorAddress?'<br><span style="color:#555;">'+distributorAddress+'</span>':''}</p>
+    <p style="font-size:15px;font-weight:700;border-bottom:1px solid #ddd;padding-bottom:8px;direction:ltr;">Subject: ${subject}</p>
+    <p style="direction:ltr;">${body}</p>
+
+    <table class="dl-table">
+      <tr><td>Brand</td><td><b>${brand}</b></td></tr>
+      <tr><td>Model</td><td><b>${model}</b></td></tr>
+      <tr><td>Color</td><td><b>${color||'—'}</b></td></tr>
+      <tr><td>Engine #</td><td><b>${engineNumber||'—'}</b></td></tr>
+      <tr><td>Chassis #</td><td><b>${chassisNumber||'—'}</b></td></tr>
+      <tr><td>Date Supplied</td><td><b>${dateSupplied?new Date(dateSupplied).toLocaleDateString('en-GB'):'—'}</b></td></tr>
+      <tr><td>Amount</td><td><b style="font-size:15px;">${f(unitPrice)}</b></td></tr>
+    </table>
+
+    <p style="font-size:12px;color:#555;direction:ltr;">${letterType==='return'?'The customer has returned/defaulted and we are returning this vehicle per our agreement.':'This letter serves as purchase confirmation. Please keep for your records.'}</p>
+
+    <div style="margin-top:60px;text-align:right;direction:ltr;">
+      <p>Regards,</p>
+      <div style="margin-top:40px;border-top:1px solid #333;width:200px;display:inline-block;padding-top:6px;font-size:12px;text-align:left;">
+        ${ownerName}<br>
+        NASEEB AUTOS &amp; SHOWROOM
+      </div>
+    </div>
+  </div>`;
 };
+
+export const paymentReceiptHTML = (data) => `
+  <!-- SHOP HEADER — LTR layout -->
+  <div style="
+    text-align: center;
+    border-bottom: 3px solid #1a1a6e;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+    direction: ltr;
+  ">
+    <div style="
+      font-size: 22px;
+      font-weight: 900;
+      color: #1a1a6e;
+      letter-spacing: 2px;
+      font-family: 'Times New Roman', serif;
+    ">NASEEB AUTOS & SHOWROOM</div>
+    
+    <div style="font-size: 11px; color: #555; margin-top: 3px;">
+      Naseeb Autos & Showroom / Naseeb Electronics & Showroom
+    </div>
+    <div style="font-size: 11px; color: #555;">
+      Main Bazar Khuzdar &nbsp;|&nbsp; Ph: 0333-7971303 / 0333-7973444
+    </div>
+  </div>
+
+  <!-- RECEIPT TITLE -->
+  <div style="text-align: center; margin: 10px 0 16px;">
+    <div style="
+      border: 2px dashed #1a1a6e;
+      display: inline-block;
+      padding: 6px 28px;
+    ">
+      <span style="
+        font-size: 15px;
+        font-weight: 900;
+        letter-spacing: 3px;
+        color: #1a1a6e;
+        direction: ltr;
+      ">PAYMENT RECEIPT</span>
+      &nbsp;&nbsp;
+      <span class="urdu" style="font-size: 14px; color: #1a1a6e;">
+        / رسید ادائیگی
+      </span>
+    </div>
+  </div>
+
+  <!-- RECEIPT DETAILS TABLE -->
+  <table style="
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    direction: ltr;
+  ">
+    
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="
+        padding: 6px 8px;
+        font-weight: 700;
+        width: 45%;
+        font-size: 12px;
+      ">
+        Receipt No / 
+        <span class="urdu" style="font-size: 11px;">رسید نمبر</span>
+      </td>
+      <td style="
+        padding: 6px 8px;
+        font-weight: 900;
+        font-size: 13px;
+        color: #1a1a6e;
+      ">
+        ${data.receiptNumber}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        Date Paid / 
+        <span class="urdu" style="font-size: 11px;">ادائیگی کی تاریخ</span>
+      </td>
+      <td style="padding: 6px 8px; font-size: 13px;">
+        ${data.date}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        Customer / 
+        <span class="urdu" style="font-size: 11px;">گاہک کا نام</span>
+      </td>
+      <td style="padding: 6px 8px; font-size: 13px; font-weight: 600;">
+        ${data.customerName || '—'}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        Phone / 
+        <span class="urdu" style="font-size: 11px;">فون نمبر</span>
+      </td>
+      <td style="padding: 6px 8px; font-size: 13px;">
+        ${data.customerPhone || '—'}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        CNIC / 
+        <span class="urdu" style="font-size: 11px;">شناختی کارڈ</span>
+      </td>
+      <td style="padding: 6px 8px; font-size: 13px;">
+        ${data.customerCnic || 'N/A'}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        Khata # / 
+        <span class="urdu" style="font-size: 11px;">کھاتہ نمبر</span>
+      </td>
+      <td style="
+        padding: 6px 8px;
+        font-size: 14px;
+        font-weight: 900;
+        color: #1a1a6e;
+      ">
+        ${data.khataNumber || '—'}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        Item / 
+        <span class="urdu" style="font-size: 11px;">سامان کی تفصیل</span>
+      </td>
+      <td style="padding: 6px 8px; font-size: 13px;">
+        ${data.itemDescription || '—'}
+      </td>
+    </tr>
+
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 6px 8px; font-weight: 700; font-size: 12px;">
+        Due Date / 
+        <span class="urdu" style="font-size: 11px;">قسط کی تاریخ</span>
+      </td>
+      <td style="padding: 6px 8px; font-size: 13px;">
+        ${data.dueDate 
+          ? new Date(data.dueDate).toLocaleDateString('en-GB', {
+              day: '2-digit', month: 'short', year: 'numeric'
+            })
+          : '—'
+        }
+      </td>
+    </tr>
+
+  </table>
+
+  <!-- PAYMENT AMOUNT BOX — center aligned, LTR -->
+  <div style="
+    border: 2px solid #16a34a;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    background: #f0fdf4;
+    margin: 14px 0;
+    direction: ltr;
+  ">
+    <div style="
+      font-size: 11px;
+      font-weight: 700;
+      color: #16a34a;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    ">
+      AMOUNT PAID / 
+      <span class="urdu" style="font-size: 10px;">
+        ملی ہوئی رقم
+      </span>
+    </div>
+    
+    <div style="
+      font-size: 32px;
+      font-weight: 900;
+      color: #15803d;
+      font-family: 'Times New Roman', serif;
+    ">
+      Rs. ${Number(data.paidAmount || 0).toLocaleString('en-PK')}
+    </div>
+
+    ${data.shortfall > 0 ? `
+    <div style="
+      font-size: 12px;
+      color: #dc2626;
+      font-weight: 700;
+      margin-top: 4px;
+    ">
+      Shortfall / 
+      <span class="urdu" style="font-size: 10px;">بقایہ قسط</span>:
+      Rs. ${Number(data.shortfall).toLocaleString('en-PK')}
+    </div>
+    ` : ''}
+
+    <div style="
+      font-size: 13px;
+      color: #1a1a6e;
+      font-weight: 700;
+      margin-top: 6px;
+      border-top: 1px solid #bbf7d0;
+      padding-top: 6px;
+    ">
+      Remaining Balance / 
+      <span class="urdu" style="font-size: 11px;">بقایا رقم</span>:
+      Rs. ${Number(data.remainingBalance || 0).toLocaleString('en-PK')}
+    </div>
+  </div>
+
+  <!-- FINANCIAL SUMMARY TABLE -->
+  <table style="
+    width: 100%;
+    border-collapse: collapse;
+    border: 1.5px solid #1a1a6e;
+    margin-bottom: 14px;
+    direction: ltr;
+  ">
+    <thead>
+      <tr style="background: #e8eaf6;">
+        <th colspan="2" style="
+          padding: 8px;
+          text-align: center;
+          font-size: 13px;
+          font-weight: 900;
+          color: #1a1a6e;
+        ">
+          FINANCIAL SUMMARY
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid #ddd;">
+        <td style="padding: 7px 10px; font-weight: 700; font-size: 12px;">
+          Total Sale Price (Kul Keemat)
+        </td>
+        <td style="
+          padding: 7px 10px;
+          font-weight: 900;
+          font-size: 13px;
+          text-align: right;
+        ">
+          Rs. ${Number(data.totalPrice || 0).toLocaleString('en-PK')}
+        </td>
+      </tr>
+      <tr style="border-bottom: 1px solid #ddd;">
+        <td style="padding: 7px 10px; font-size: 13px; text-align: right;">
+          Installment Expected
+        </td>
+        <td style="padding: 7px 10px; font-size: 13px; text-align: right;">
+          Rs. ${Number(data.expectedAmount || 0).toLocaleString('en-PK')}
+        </td>
+      </tr>
+      <tr style="border-bottom: 1px solid #ddd;">
+        <td style="
+          padding: 7px 10px;
+          font-weight: 900;
+          font-size: 13px;
+          color: #16a34a;
+        ">
+          ✓ Amount Received
+        </td>
+        <td style="
+          padding: 7px 10px;
+          font-weight: 900;
+          font-size: 14px;
+          color: #16a34a;
+          text-align: right;
+        ">
+          Rs. ${Number(data.paidAmount || 0).toLocaleString('en-PK')}
+        </td>
+      </tr>
+      ${data.shortfall > 0 ? `
+      <tr style="border-bottom: 1px solid #ddd;">
+        <td style="
+          padding: 7px 10px;
+          font-weight: 700;
+          color: #dc2626;
+          font-size: 12px;
+        ">
+          Shortfall (Baqaya)
+        </td>
+        <td style="
+          padding: 7px 10px;
+          color: #dc2626;
+          font-weight: 700;
+          text-align: right;
+        ">
+          Rs. ${Number(data.shortfall).toLocaleString('en-PK')}
+        </td>
+      </tr>
+      ` : ''}
+      <tr style="border-top: 2px solid #1a1a6e;">
+        <td style="
+          padding: 8px 10px;
+          font-weight: 900;
+          font-size: 14px;
+        ">
+          Remaining Balance
+        </td>
+        <td style="
+          padding: 8px 10px;
+          font-weight: 900;
+          font-size: 15px;
+          color: #1a1a6e;
+          text-align: right;
+        ">
+          Rs. ${Number(data.remainingBalance || 0).toLocaleString('en-PK')}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- COLLECTION INFO -->
+  <table style="
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    direction: ltr;
+  ">
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 5px 8px; font-weight: 700; font-size: 12px; width: 45%;">
+        Payment Mode
+      </td>
+      <td style="padding: 5px 8px; font-size: 12px;">Cash</td>
+    </tr>
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 5px 8px; font-weight: 700; font-size: 12px;">
+        Collected By
+      </td>
+      <td style="padding: 5px 8px; font-size: 12px;">
+        ${data.collectedBy || 'Owner'}
+      </td>
+    </tr>
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 5px 8px; font-weight: 700; font-size: 12px;">
+        Status
+      </td>
+      <td style="
+        padding: 5px 8px;
+        font-weight: 900;
+        font-size: 13px;
+        color: ${
+          data.paymentStatus === 'paid' ? '#16a34a' :
+          data.paymentStatus === 'partially_paid' ? '#d97706' :
+          '#dc2626'
+        };
+      ">
+        ${
+          data.paymentStatus === 'paid' ? '✓ PAID IN FULL' :
+          data.paymentStatus === 'partially_paid' ? '⚠ PARTIAL PAYMENT' :
+          '✗ MISSED'
+        }
+      </td>
+    </tr>
+    ${data.note ? `
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 5px 8px; font-weight: 700; font-size: 12px;">Note</td>
+      <td style="padding: 5px 8px; font-size: 12px;">${data.note}</td>
+    </tr>
+    ` : ''}
+  </table>
+
+  <!-- ELECTRONICS DISCLAIMER -->
+  ${data.isElectronics ? `
+  <div style="
+    border: 1.5px solid #f59e0b;
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: #fffbeb;
+    margin-bottom: 14px;
+    direction: ltr;
+  ">
+    <div style="font-weight: 700; font-size: 11px; color: #92400e; margin-bottom: 4px;">
+      ⚠ ELECTRONICS WARRANTY DISCLAIMER:
+    </div>
+    <div style="font-size: 11px; color: #78350f; margin-bottom: 6px;">
+      Samaan lene ke baad warranty claims sirf distributor 
+      ya service center se direct honge. Naseeb Autos 
+      showroom kisi kisam ke claim ka zimedar nahi hoga.
+    </div>
+    <div class="urdu-block" style="font-size: 12px; color: #78350f;">
+      اس چیز کی گارنٹی ہماری نہیں ہے۔ یہ اس دکاندار کی گارنٹی ہوگی جس سے یہ سامان لایا گیا ہے۔
+    </div>
+  </div>
+  ` : `
+  <div style="
+    border: 1.5px solid #1a1a6e;
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    margin-bottom: 14px;
+    direction: ltr;
+  ">
+    <div style="font-weight: 700; font-size: 11px; color: #1a1a6e; margin-bottom: 4px;">
+      ⚠ VEHICLE NOTE:
+    </div>
+    <div style="font-size: 11px; color: #334155; margin-bottom: 6px;">
+      Gari ke paper aur registration ke hawaley se tamam qawaneen ki khilaf-warzi dukan par laagu nahi hogi jab tak poori payment ada na ho jaye.
+    </div>
+  </div>
+  `}
+
+  <hr style="border: 1px solid #1a1a6e; margin: 16px 0;">
+
+  <!-- SIGNATURES — LTR layout -->
+  <div style="
+    display: flex;
+    justify-content: space-between;
+    direction: ltr;
+    margin-top: 20px;
+    gap: 20px;
+  ">
+    <div style="text-align: center; flex: 1;">
+      <div style="
+        border-bottom: 1px solid #333;
+        min-height: 36px;
+        margin-bottom: 6px;
+      "></div>
+      <div style="font-size: 11px; font-weight: 700;">
+        Gahak Ke Dastkhat
+      </div>
+      <div class="urdu" style="font-size: 11px;">گاہک کے دستخط</div>
+    </div>
+
+    <div style="text-align: center; flex: 1;">
+      <div style="
+        border-bottom: 1px solid #333;
+        min-height: 36px;
+        margin-bottom: 6px;
+      "></div>
+      <div style="font-size: 11px; font-weight: 700;">
+        Naseeb Autos & Showroom
+      </div>
+      <div style="font-size: 10px; color: #555;">Authorized Signature</div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="
+    text-align: center;
+    font-size: 9px;
+    color: #aaa;
+    margin-top: 14px;
+    direction: ltr;
+    border-top: 1px solid #eee;
+    padding-top: 8px;
+  ">
+    Computer generated receipt — Receipt # ${data.receiptNumber}
+    &nbsp;|&nbsp; Naseeb Autos & Showroom &nbsp;|&nbsp; 0333-7971303
+  </div>
+`;

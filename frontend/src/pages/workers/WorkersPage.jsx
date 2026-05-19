@@ -11,6 +11,7 @@ import PageWrapper from '@/components/ui/PageWrapper'
 import ConfirmModal from '@/components/ui/ConfirmModal'
 import toast from 'react-hot-toast'
 import { handleApiError } from '@/utils/errorHandler'
+import { formatCNIC, formatPhone } from '@/utils/formatters'
 
 const INPUT = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400'
 
@@ -28,6 +29,31 @@ export default function WorkersPage() {
   const { register: regEdit, handleSubmit: handleEditSubmit, reset: resetEdit, formState: { errors: editErrors } } = useForm()
 
 
+
+  const fetchWorkers = async () => {
+    try {
+      const res = await api.get('/auth/users')
+      if (res.data && res.data.success) {
+        setWorkers(res.data.data)
+      }
+    } catch (err) {
+      handleApiError(err)
+    }
+  }
+
+  useEffect(() => {
+    fetchWorkers()
+  }, [])
+
+  const filteredWorkers = useMemo(() => {
+    return workers.filter(w => {
+      const name = w.fullName || w.name || w.username || ''
+      return name.toLowerCase().includes(search.toLowerCase()) || 
+             (w.phone && w.phone.includes(search))
+    })
+  }, [workers, search])
+
+  const workerPagination = usePagination(filteredWorkers, 10)
 
   // ── Add Worker ───────────────────────────────────────────────
   const handleAddWorker = async (data) => {
@@ -224,7 +250,11 @@ export default function WorkersPage() {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Phone</label>
-                  <input {...regEdit('phone')} className={INPUT} placeholder="0300-1234567" />
+                  <input {...regEdit('phone', {
+                    onChange: (e) => {
+                      e.target.value = formatPhone(e.target.value)
+                    }
+                  })} className={INPUT} placeholder="0300-1234567" />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Ohda (Role)</label>
@@ -284,7 +314,12 @@ export default function WorkersPage() {
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">Phone *</label>
                     <input
-                      {...register('phone', { required: 'Phone zaroori hai' })}
+                      {...register('phone', { 
+                        required: 'Phone zaroori hai',
+                        onChange: (e) => {
+                          e.target.value = formatPhone(e.target.value)
+                        }
+                      })}
                       className={INPUT}
                       placeholder="0300-1234567"
                     />
@@ -292,7 +327,11 @@ export default function WorkersPage() {
                   </div>
                   <div>
                     <label className="text-xs font-bold text-slate-700 block mb-1">CNIC</label>
-                    <input {...register('cnic')} className={INPUT} placeholder="34201-XXXXXXX-X" />
+                    <input {...register('cnic', {
+                      onChange: (e) => {
+                        e.target.value = formatCNIC(e.target.value)
+                      }
+                    })} className={INPUT} placeholder="34201-XXXXXXX-X" />
                   </div>
                   <div className="col-span-2">
                     <label className="text-xs font-bold text-slate-700 block mb-1">Ohda (Role)</label>

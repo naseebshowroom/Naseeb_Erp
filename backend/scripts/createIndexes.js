@@ -53,9 +53,9 @@ const createIndexes = async () => {
     const payments = db.collection('payments');
     await payments.createIndex({ installment: 1 });
     await payments.createIndex({ customer: 1 });
-    await payments.createIndex({ paymentDate: -1 });                      // sort by date desc
-    await payments.createIndex({ receivedBy: 1, paymentDate: -1 });       // per-worker reports
-    await payments.createIndex({ paymentDate: 1, installment: 1 });       // duplicate-check
+    await payments.createIndex({ paidDate: -1 });                      // sort by date desc
+    await payments.createIndex({ collectedBy: 1, paidDate: -1 });       // per-worker reports
+    await payments.createIndex({ paidDate: 1, installment: 1 });       // duplicate-check
     console.log('  ✓ Payment indexes created');
 
     // ── Users ───────────────────────────────────────────────────────────────

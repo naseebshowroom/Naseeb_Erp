@@ -45,7 +45,12 @@ self.addEventListener('fetch', (e) => {
           cache.put(e.request, cacheCopy);
         });
         return networkResponse;
-      }).catch(() => {});
+      }).catch((error) => {
+        if (e.request.mode === 'navigate') {
+          return caches.match('/');
+        }
+        return Response.error();
+      });
     })
   );
 });

@@ -11,90 +11,67 @@ const paymentSchema = new mongoose.Schema({
     ref: 'Customer',
     required: true
   },
+  scheduleEntryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true
+  },
   amount: {
     type: Number,
     required: true
   },
-  expectedAmount: {
-    type: Number
-  },
-  shortfall: {
-    type: Number,
-    default: 0
-  },
-  status: {
-    type: String
-  },
   paymentMode: {
     type: String,
     enum: ['cash', 'bank', 'other'],
+    required: true,
     default: 'cash'
-  },
-  receivedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
   },
   collectedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
+    ref: 'User',
+    required: true
   },
-  collectorName: {
-    type: String  // Free-text name of who collected (owner/worker name)
-  },
-  paymentDate: {
+  paidDate: {
     type: Date,
+    required: true,
     default: Date.now
+  },
+  receiptNumber: {
+    type: String,
+    required: true,
+    unique: true
   },
   notes: {
     type: String
   },
-  receiptNumber: {
-    type: String,
-    unique: true
-  },
-  scheduleEntryId: {
-    type: mongoose.Schema.Types.ObjectId
-  },
-  isAdvance: {
-    type: Boolean,
-    default: false
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }
+
+  // ── SPLIT / PARTIAL PAYMENT TRACKING ──
+  // When a single schedule slot is paid in multiple installments,
+  // these fields group those transactions together.
+  relatedDueDate:       { type: Date },     // the due date of the schedule slot this covers
+  isPartOfSplitPayment: { type: Boolean, default: false }, // true when slot covered in multiple payments
+  splitPaymentGroup:    { type: String },   // key: "installmentId_slotId"
+
+  // ── SNAPSHOT FIELDS ──
+  // These denormalized fields ensure that even if
+  // a customer profile is edited or deleted, payments
+  // retain their structural log. Super fast for reporting.
+  customerName:    { type: String, required: true },
+  customerPhone:   { type: String, required: true },
+  itemDescription: { type: String, required: true }, // brand + model
+  category:        { type: String, required: true },
+  khataNumber:     { type: String, required: true },
+  totalPrice:      { type: String, required: true },
+  remainingAfterPayment: { type: Number, required: true },
+  dueDate:         { type: Date, required: true },
+
 }, { timestamps: true });
 
-// Auto-generate receipt number: RCP-YYYY-NNNN
-paymentSchema.pre('save', async function(next) {
-  if (!this.isNew) return next();
-
-  try {
-    const currentYear = new Date().getFullYear();
-    // Find highest receipt number for current year
-    const lastPayment = await this.constructor.findOne(
-      { receiptNumber: new RegExp(`^RCP-${currentYear}-`) },
-      { receiptNumber: 1 }
-    ).sort({ createdAt: -1 });
-
-    let sequence = 1;
-    if (lastPayment && lastPayment.receiptNumber) {
-      const parts = lastPayment.receiptNumber.split('-');
-      if (parts.length === 3) {
-        sequence = parseInt(parts[2], 10) + 1;
-      }
-    }
-
-    this.receiptNumber = `RCP-${currentYear}-${sequence.toString().padStart(4, '0')}`;
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Indexes for super fast payment query lookups
-paymentSchema.index({ installment: 1 });
-paymentSchema.index({ collectedBy: 1 });
-paymentSchema.index({ paymentDate: -1 });
+// COMPOUND INDEXES
+// Speed up filters on payments page and ledger reports
+paymentSchema.index({ installment: 1, paidDate: -1 });
+paymentSchema.index({ collectedBy: 1, paidDate: -1 });
+paymentSchema.index({ paidDate: -1 });
+paymentSchema.index({ splitPaymentGroup: 1 });
+paymentSchema.index({ scheduleEntryId: 1, paidDate: -1 });
 
 export default mongoose.model('Payment', paymentSchema);

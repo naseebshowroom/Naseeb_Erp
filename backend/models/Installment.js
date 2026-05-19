@@ -53,6 +53,7 @@ const installmentSchema = new mongoose.Schema({
 
   // Used when category = 'other', owner types: "Fan", "Speaker", etc.
   customCategory: { type: String },
+  customItemName: { type: String, trim: true },
   
   // Product details
   brand:              { type: String },

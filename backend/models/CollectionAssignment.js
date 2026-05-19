@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const collectionAssignmentSchema = new mongoose.Schema({
   worker: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Worker',
+    ref: 'User',
     required: true
   },
   customer: {

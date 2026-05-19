@@ -9,6 +9,7 @@ import ErrorState from '@/components/ui/ErrorState';
 import Pagination from '@/components/ui/Pagination';
 import { useInstallments } from '@/hooks/useInstallments';
 import { formatDate, formatCurrency } from '@/utils/dateUtils';
+import { getItemDisplayName, getItemIcon } from '@/utils/itemHelper';
 
 const columnHelper = createColumnHelper();
 
@@ -52,19 +53,26 @@ export default function InstallmentsPage() {
         </div>
       ),
     }),
+    columnHelper.accessor('khataNumber', {
+      header: 'Khata #',
+      cell: (info) => (
+        <span className="font-mono font-black text-slate-700 bg-slate-100 px-2 py-1 rounded text-xs tracking-widest">
+          {info.getValue() || '—'}
+        </span>
+      ),
+    }),
     columnHelper.accessor('category', {
       header: 'Samaan (Item)',
       cell: (info) => {
         const cat = info.getValue();
-        const Icon = CATEGORY_ICONS[cat] || Box;
         return (
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600">
-               <Icon size={16} />
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+               {getItemIcon(cat, 16)}
             </div>
             <div>
               <p className="font-bold text-slate-800">{CATEGORY_LABELS[cat] || cat}</p>
-              <p className="text-xs text-slate-500">{info.row.original.brand} {info.row.original.model}</p>
+              <p className="text-xs text-slate-500 font-medium">{getItemDisplayName(info.row.original)}</p>
             </div>
           </div>
         );

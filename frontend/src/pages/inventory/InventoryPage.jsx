@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Search, Plus, Package, Bike,
   Smartphone, AlertTriangle, CheckCircle2, X, Clock,
-  RefreshCw, TrendingDown, ShoppingCart, Tag
+  RefreshCw, TrendingDown, ShoppingCart, Tag, Car, Monitor, Refrigerator, Box
 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -12,6 +12,19 @@ import inventoryService from '@/services/inventoryService'
 import { handleApiError } from '@/utils/errorHandler'
 import api from '@/lib/axios'
 import Pagination, { usePagination } from '@/components/ui/Pagination'
+
+// ── Tabs configuration in Roman Urdu ──────────────────────────
+const TABS_CONFIG = [
+  { id: 'motorcycle', label: 'Motorcycle', icon: Bike },
+  { id: 'car', label: 'Gari', icon: Car },
+  { id: 'mobile', label: 'Mobile', icon: Smartphone },
+  { id: 'ac', label: 'AC', icon: Box },
+  { id: 'lcd', label: 'LCD / TV', icon: Monitor },
+  { id: 'washing_machine', label: 'Washing Machine', icon: Box },
+  { id: 'fridge', label: 'Fridge', icon: Refrigerator },
+  { id: 'electronics', label: 'Electronics (Baqi)', icon: Smartphone },
+  { id: 'other', label: 'Kuch Aur', icon: Tag }
+]
 
 // ── Status helpers ────────────────────────────────────────────
 const STATUS_MAP = {
@@ -56,7 +69,7 @@ const INPUT_CLS = "w-full px-3 py-2 bg-white border border-slate-200 rounded-xl 
 
 // ── Main Page ──────────────────────────────────────────────────
 export default function InventoryPage() {
-  const [activeTab, setActiveTab]     = useState('motorcycles')
+  const [activeTab, setActiveTab]     = useState('motorcycle')
   const [items, setItems]             = useState([])
   const [stats, setStats]             = useState(null)
   const [alerts, setAlerts]           = useState([])
@@ -69,15 +82,15 @@ export default function InventoryPage() {
   const { register, handleSubmit, reset, watch } = useForm({
     defaultValues: { category: 'motorcycle', qty: 1 }
   })
-  const isMotoModal = watch('category') === 'motorcycle'
+  const isVehicleModal = ['motorcycle', 'car'].includes(watch('category'))
+  const isVehicleTab = ['motorcycle', 'car'].includes(activeTab)
 
   // ── Data fetching ────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setIsLoading(true)
     try {
-      const category = activeTab === 'motorcycles' ? 'motorcycle' : 'electronics'
       const [invRes, statsRes, alertsRes] = await Promise.all([
-        inventoryService.getInventory({ category, search: search || undefined }),
+        inventoryService.getInventory({ category: activeTab, search: search || undefined }),
         inventoryService.getStats(),
         inventoryService.getAlerts(),
       ])
@@ -100,6 +113,17 @@ export default function InventoryPage() {
   const handleAddStock = async (data) => {
     setIsSubmitting(true)
     try {
+      let finalElecType = data.elecType || '';
+      if (['mobile', 'ac', 'lcd', 'washing_machine', 'fridge'].includes(data.category)) {
+        const mapping = {
+          mobile: 'Mobile Phone',
+          ac: 'Air Conditioner',
+          lcd: 'LCD / TV',
+          washing_machine: 'Washing Machine',
+          fridge: 'Refrigerator'
+        };
+        finalElecType = mapping[data.category];
+      }
       const payload = {
         category: data.category,
         company:  data.company || data.brand || '',
@@ -110,7 +134,7 @@ export default function InventoryPage() {
         serialNo:  data.serialNo || '',
         purchasePrice: Number(data.purchasePrice) || 0,
         distributor:   data.distributor || '',
-        elecType:      data.elecType || '',
+        elecType:      finalElecType,
         qty:           data.qty || 1,
       }
       await inventoryService.addInventory(payload)
@@ -125,9 +149,9 @@ export default function InventoryPage() {
     }
   }
 
-  const currentStats = stats
-    ? (activeTab === 'motorcycles' ? stats.motorcycle : stats.electronics)
-    : null
+  const currentStats = stats ? stats[activeTab] : null
+  const activeTabConfig = TABS_CONFIG.find(t => t.id === activeTab) || TABS_CONFIG[0]
+  const ActiveIcon = activeTabConfig.icon
 
   return (
     <PageWrapper
@@ -148,7 +172,7 @@ export default function InventoryPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard icon={Package}       label="Kul Maal"      value={currentStats?.total}          color="text-slate-900"   />
           <StatCard icon={CheckCircle2}  label="Dastiyab"      value={currentStats?.available}      color="text-emerald-600" />
-          <StatCard icon={Bike}          label="Qist Par"      value={currentStats?.onInstallment}  color="text-blue-600"    />
+          <StatCard icon={ActiveIcon}    label="Qist Par"      value={currentStats?.onInstallment}  color="text-blue-600"    />
           <StatCard icon={TrendingDown}  label="Bik Gaya"      value={currentStats?.completed}      color="text-slate-400"   />
         </div>
 
@@ -159,23 +183,22 @@ export default function InventoryPage() {
             {/* Table toolbar */}
             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
               {/* Tab switcher */}
-              <div className="flex bg-slate-200/50 p-1 rounded-xl w-full sm:w-auto">
-                <button
-                  onClick={() => setActiveTab('motorcycles')}
-                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                    activeTab === 'motorcycles' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <Bike size={15} /> Motorcycles
-                </button>
-                <button
-                  onClick={() => setActiveTab('electronics')}
-                  className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg text-sm font-bold transition-all ${
-                    activeTab === 'electronics' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <Smartphone size={15} /> Electronics
-                </button>
+              <div className="flex bg-slate-200/50 p-1 rounded-xl w-full sm:w-auto overflow-x-auto gap-1">
+                {TABS_CONFIG.map(tab => {
+                  const Icon = tab.icon
+                  const isActive = activeTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                        isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      <Icon size={14} /> {tab.label}
+                    </button>
+                  )
+                })}
               </div>
 
               {/* Search */}
@@ -212,11 +235,11 @@ export default function InventoryPage() {
                   <p className="font-medium">Koi maal nahi mila</p>
                   <p className="text-sm">"Naya Maal Daalen" button se stock shamil karein</p>
                 </div>
-              ) : activeTab === 'motorcycles' ? (
+              ) : isVehicleTab ? (
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="px-6 py-4">Motorcycle</th>
+                      <th className="px-6 py-4">{activeTab === 'car' ? 'Gari' : 'Motorcycle'}</th>
                       <th className="px-6 py-4">Engine / Chassis</th>
                       <th className="px-6 py-4">Gahak</th>
                       <th className="px-6 py-4">Keemat</th>
@@ -267,7 +290,7 @@ export default function InventoryPage() {
                       <tr key={row._id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 text-purple-700 text-xs font-bold rounded-lg border border-purple-100">
-                            <Tag size={11} /> {row.elecType || row.company}
+                            <Tag size={11} /> {row.elecType || row.company || 'Kuch Aur'}
                           </span>
                         </td>
                         <td className="px-6 py-4">
@@ -333,17 +356,21 @@ export default function InventoryPage() {
             {stats && (
               <div className="mt-4 p-4 erp-card space-y-3">
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Mujmooi Khulasa</h4>
-                <div className="flex justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-500">Motorcycles</span>
-                  <span className="font-bold text-slate-900">{stats.motorcycle.total}</span>
-                </div>
-                <div className="flex justify-between text-sm py-2 border-b border-slate-100">
-                  <span className="text-slate-500">Electronics</span>
-                  <span className="font-bold text-slate-900">{stats.electronics.total}</span>
-                </div>
+                {TABS_CONFIG.map(tab => {
+                  const total = stats[tab.id]?.total || 0;
+                  if (total === 0) return null;
+                  return (
+                    <div key={tab.id} className="flex justify-between text-sm py-2 border-b border-slate-100">
+                      <span className="text-slate-500">{tab.label}</span>
+                      <span className="font-bold text-slate-900">{total}</span>
+                    </div>
+                  );
+                })}
                 <div className="flex justify-between text-sm py-2">
-                  <span className="text-slate-500">Kul Maal</span>
-                  <span className="font-black text-blue-600">{stats.motorcycle.total + stats.electronics.total}</span>
+                  <span className="text-slate-500 font-bold">Kul Maal</span>
+                  <span className="font-black text-blue-600">
+                    {Object.values(stats).reduce((acc, curr) => acc + (curr.total || 0), 0)}
+                  </span>
                 </div>
               </div>
             )}
@@ -382,11 +409,17 @@ export default function InventoryPage() {
                   className={INPUT_CLS}
                 >
                   <option value="motorcycle">Motorcycle</option>
-                  <option value="electronics">Electronics (Mobile, AC, TV, etc)</option>
+                  <option value="car">Gari (Car)</option>
+                  <option value="mobile">Mobile (Mobile Phone)</option>
+                  <option value="ac">AC (Air Conditioner)</option>
+                  <option value="lcd">TV / LCD</option>
+                  <option value="washing_machine">Washing Machine</option>
+                  <option value="fridge">Fridge (Refrigerator)</option>
+                  <option value="other">Kuch Aur (Other)</option>
                 </select>
               </Field>
 
-              {isMotoModal ? (
+              {isVehicleModal ? (
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Company *">
                     <input {...register('company', { required: true })} placeholder="Honda" className={INPUT_CLS} />
@@ -409,18 +442,6 @@ export default function InventoryPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <Field label="Electronics Ki Qisam *">
-                      <select {...register('elecType')} className={INPUT_CLS}>
-                        <option value="Mobile Phone">Mobile Phone</option>
-                        <option value="Air Conditioner">Air Conditioner (AC)</option>
-                        <option value="LCD / TV">LCD / TV</option>
-                        <option value="Washing Machine">Washing Machine</option>
-                        <option value="Refrigerator">Refrigerator (Fridge)</option>
-                        <option value="Other">Kuch Aur</option>
-                      </select>
-                    </Field>
-                  </div>
                   <Field label="Brand *">
                     <input {...register('brand', { required: true })} placeholder="Samsung" className={INPUT_CLS} />
                   </Field>

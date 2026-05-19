@@ -2,6 +2,7 @@ import Installment from '../models/Installment.js';
 import Customer from '../models/Customer.js';
 import Asset from '../models/Asset.js';
 import Payment from '../models/Payment.js';
+import mongoose from 'mongoose';
 import { generatePaymentSchedule } from '../utils/schedule.js';
 
 // @desc    Get all installments
@@ -9,38 +10,86 @@ import { generatePaymentSchedule } from '../utils/schedule.js';
 // @access  Private
 export const getInstallments = async (req, res) => {
   try {
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
-    const startIndex = (page - 1) * limit;
+    const {
+      customerId,
+      customer,
+      status,
+      category,
+      limit = 10,
+      page = 1,
+    } = req.query;
 
-    const query = {};
-    if (req.query.status && req.query.status !== 'all') {
-      query.status = req.query.status;
-    }
-    if (req.query.category && req.query.category !== 'all') {
-      query.category = req.query.category;
-    }
-    if (req.query.customer) {
-      query.customer = req.query.customer;
-    }
+    const query = { isDeleted: { $ne: true } };
+    
+    // Support both customerId and customer query params
+    const resolvedCustomerId = customerId || customer;
+    if (resolvedCustomerId) query.customer = resolvedCustomerId;
+    
+    if (status && status !== 'all') query.status = status;
+    if (category && category !== 'all') query.category = category;
 
     const total = await Installment.countDocuments(query);
+    
     const installments = await Installment.find(query)
-      .populate('customer', 'fullName cnic phone khataNumber')
+      .populate('customer', 'fullName phone cnic khataNumber')
+      .select(`
+        khataNumber category brand model color
+        customCategory installmentPrice
+        advanceAmount remainingAmount totalPaid
+        perInstallmentAmount scheduleType
+        totalInstallments installmentsPaid
+        isCashSale status investorName
+        engineNumber chassisNumber
+        createdAt
+      `)
       .sort({ createdAt: -1 })
-      .skip(startIndex)
-      .limit(limit)
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
       .lean();
+
+    // Build display label for each installment (used in dropdowns)
+    const installmentsWithLabel = installments.map(inst => {
+      const productName = inst.customCategory
+        || [inst.brand, inst.model].filter(Boolean).join(' ')
+        || inst.category;
+      
+      const categoryLabel = {
+        motorcycle: 'Motorcycle',
+        car: 'Car',
+        mobile: 'Mobile',
+        ac: 'AC',
+        lcd: 'LCD/TV',
+        fridge: 'Fridge',
+        washing_machine: 'Washing Machine',
+        other: 'Other',
+      }[inst.category] || inst.category;
+
+      return {
+        ...inst,
+        displayLabel: `${productName} (${categoryLabel}) — Khata: ${inst.khataNumber} — Baqaya: Rs. ${Math.round(inst.remainingAmount || 0).toLocaleString('en-PK')}`,
+        productName,
+        categoryLabel,
+      };
+    });
 
     res.status(200).json({
       success: true,
-      count: installments.length,
+      data: installmentsWithLabel,
       total,
-      pagination: { page, limit, pages: Math.ceil(total / limit) },
-      data: installments
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / limit),
+      },
     });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message,
+    });
   }
 };
 
@@ -69,8 +118,10 @@ export const getInstallmentById = async (req, res) => {
 // @route   POST /api/installments
 // @access  Private
 export const createInstallment = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const isReplicaSet = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSetWithPrimary' || 
+                       mongoose.connection?.client?.topology?.description?.type === 'Sharded';
+  const session = isReplicaSet ? await mongoose.startSession() : null;
+  if (session) session.startTransaction();
 
   try {
     let { customer, distributor, ...rest } = req.body;
@@ -103,33 +154,30 @@ export const createInstallment = async (req, res) => {
     // Verify customer exists
     const customerExists = await Customer.findById(customer).session(session);
     if (!customerExists) {
-      await session.abortTransaction();
-      session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        session.endSession();
+      }
       return res.status(404).json({ success: false, message: 'Gahak nahi mila' });
     }
 
     const isValidObjectId = (v) => v && /^[a-f\d]{24}$/i.test(String(v));
 
-    // Generate Payment Schedule only if NOT a cash sale and totalInstallments is provided
+    // Generate Payment Schedule dynamically based on remaining balance and perInstallmentAmount
     let paymentSchedule = [];
-    const { totalInstallments, scheduleType, startDate, isCashSale, perInstallmentAmount } = rest;
-    if (!isCashSale && totalInstallments && scheduleType && startDate) {
-      paymentSchedule = generatePaymentSchedule(startDate, totalInstallments, scheduleType);
-      
-      // Inject expectedAmount for each paymentSchedule slot
-      paymentSchedule = paymentSchedule.map(entry => ({
-        dueDate: entry.dueDate,
-        status: 'pending',
-        expectedAmount: Number(perInstallmentAmount) || 0,
-        paidAmount: 0,
-        shortfallAmount: Number(perInstallmentAmount) || 0,
-      }));
+    const { scheduleType, startDate, isCashSale, perInstallmentAmount, installmentPrice, advanceAmount } = rest;
+    if (!isCashSale && perInstallmentAmount && scheduleType && startDate) {
+      const price = Number(installmentPrice) || 0;
+      const advance = Number(advanceAmount) || 0;
+      const remainingAmount = price - advance;
+      paymentSchedule = generatePaymentSchedule(startDate, remainingAmount, perInstallmentAmount, scheduleType);
     }
 
     const installmentData = {
       ...rest,
       customer,
       paymentSchedule,
+      totalInstallments: paymentSchedule.length,
       createdBy: req.user.id,
       ...(isValidObjectId(distributor) ? { distributor } : {}),
     };
@@ -157,13 +205,17 @@ export const createInstallment = async (req, res) => {
       }, { session });
     }
 
-    await session.commitTransaction();
-    session.endSession();
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
     res.status(201).json({ success: true, data: installment });
 
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
     console.error('[createInstallment]', error);
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(e => e.message);
@@ -181,8 +233,33 @@ export const createInstallment = async (req, res) => {
 // @access  Private
 export const updateInstallment = async (req, res) => {
   try {
-    const { paymentSchedule, ...updateData } = req.body;
+    const { paymentSchedule, customer, ...updateData } = req.body;
 
+    const currentInst = await Installment.findById(req.params.id);
+    if (!currentInst) {
+      return res.status(404).json({ success: false, message: 'Installment not found' });
+    }
+
+    const merged = {
+      isCashSale:           updateData.isCashSale !== undefined ? updateData.isCashSale : currentInst.isCashSale,
+      installmentPrice:     updateData.installmentPrice !== undefined ? Number(updateData.installmentPrice) : currentInst.installmentPrice,
+      advanceAmount:        updateData.advanceAmount !== undefined ? Number(updateData.advanceAmount) : currentInst.advanceAmount,
+      perInstallmentAmount: updateData.perInstallmentAmount !== undefined ? Number(updateData.perInstallmentAmount) : currentInst.perInstallmentAmount,
+      scheduleType:         updateData.scheduleType !== undefined ? updateData.scheduleType : currentInst.scheduleType,
+      startDate:            updateData.startDate !== undefined ? updateData.startDate : currentInst.startDate,
+    };
+
+    if (!merged.isCashSale && merged.perInstallmentAmount && merged.scheduleType && merged.startDate) {
+      const price = Number(merged.installmentPrice) || 0;
+      const advance = Number(merged.advanceAmount) || 0;
+      const remainingAmount = price - advance;
+      
+      updateData.paymentSchedule = generatePaymentSchedule(merged.startDate, remainingAmount, merged.perInstallmentAmount, merged.scheduleType);
+      updateData.totalInstallments = updateData.paymentSchedule.length;
+      updateData.remainingAmount = remainingAmount;
+    }
+
+    // 1. Update installment details
     const installment = await Installment.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true
@@ -190,6 +267,23 @@ export const updateInstallment = async (req, res) => {
 
     if (!installment) {
       return res.status(404).json({ success: false, message: 'Installment not found' });
+    }
+
+    // 2. Update customer details if provided
+    if (customer && typeof customer === 'object') {
+      const customerId = installment.customer;
+      if (customerId) {
+        await Customer.findByIdAndUpdate(customerId, {
+          fullName:    customer.fullName,
+          fatherName:  customer.fatherName,
+          ...(customer.cnic ? { cnic: customer.cnic } : {}),
+          phone:       customer.phone,
+          city:        customer.city,
+          address:     customer.address,
+          khataNumber: customer.khataNumber,
+          guarantors:  customer.guarantors || [],
+        }, { runValidators: true });
+      }
     }
 
     res.status(200).json({ success: true, data: installment });
@@ -307,14 +401,14 @@ export const getVasooliList = async (req, res) => {
         $addFields: {
           pastAndTodaySchedules: {
             $filter: {
-              input: '$paymentSchedule',
+              input: { $ifNull: ['$paymentSchedule', []] },
               as: 'slot',
               cond: { $lte: ['$$slot.dueDate', endOfToday] }
             }
           },
           todaySchedules: {
             $filter: {
-              input: '$paymentSchedule',
+              input: { $ifNull: ['$paymentSchedule', []] },
               as: 'slot',
               cond: {
                 $and: [
@@ -328,13 +422,28 @@ export const getVasooliList = async (req, res) => {
       },
       {
         $addFields: {
-          expectedUpToToday: { $round: [{ $multiply: [{ $size: '$pastAndTodaySchedules' }, '$perInstallmentAmount'] }, 0] },
-          isDueToday: { $gt: [{ $size: '$todaySchedules' }, 0] }
+          expectedUpToToday: {
+            $round: [
+              {
+                $multiply: [
+                  { $size: { $ifNull: ['$pastAndTodaySchedules', []] } },
+                  { $ifNull: ['$perInstallmentAmount', 0] }
+                ]
+              },
+              0
+            ]
+          },
+          isDueToday: { $gt: [{ $size: { $ifNull: ['$todaySchedules', []] } }, 0] }
         }
       },
       {
         $addFields: {
-          cumulativeDue: { $round: [{ $subtract: ['$expectedUpToToday', '$totalPaid'] }, 0] }
+          cumulativeDue: {
+            $round: [
+              { $subtract: [{ $ifNull: ['$expectedUpToToday', 0] }, { $ifNull: ['$totalPaid', 0] }] },
+              0
+            ]
+          }
         }
       },
       { $match: { cumulativeDue: { $gt: 0 } } },
@@ -344,7 +453,11 @@ export const getVasooliList = async (req, res) => {
           perInstallmentAmount: 1, remainingAmount: 1, totalPaid: 1,
           cumulativeDue: 1, isDueToday: 1, paymentSchedule: 1, scheduleType: 1, investorName: 1,
           daysOverdue: {
-            $floor: { $divide: ['$cumulativeDue', '$perInstallmentAmount'] }
+            $cond: {
+              if: { $gt: [{ $ifNull: ['$perInstallmentAmount', 0] }, 0] },
+              then: { $floor: { $divide: ['$cumulativeDue', { $ifNull: ['$perInstallmentAmount', 1] }] } },
+              else: 0
+            }
           }
         }
       },
@@ -428,16 +541,20 @@ export const getDueToday = async (req, res) => {
 // @route   POST /api/installments/rollover
 // @access  Private
 export const rolloverInstallment = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const isReplicaSet = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSetWithPrimary' || 
+                       mongoose.connection?.client?.topology?.description?.type === 'Sharded';
+  const session = isReplicaSet ? await mongoose.startSession() : null;
+  if (session) session.startTransaction();
 
   try {
     const { oldInstallmentId, newInstallmentData } = req.body;
 
     const oldInstallment = await Installment.findById(oldInstallmentId).session(session);
     if (!oldInstallment) {
-      await session.abortTransaction();
-      session.endSession();
+      if (session) {
+        await session.abortTransaction();
+        session.endSession();
+      }
       return res.status(404).json({ success: false, message: 'Old installment not found' });
     }
 
@@ -450,18 +567,12 @@ export const rolloverInstallment = async (req, res) => {
     const isValidObjectId = (v) => v && /^[a-f\d]{24}$/i.test(String(v));
 
     let paymentSchedule = [];
-    const { totalInstallments, scheduleType, startDate, isCashSale, perInstallmentAmount } = rest;
-    if (!isCashSale && totalInstallments && scheduleType && startDate) {
-      paymentSchedule = generatePaymentSchedule(startDate, totalInstallments, scheduleType);
-      
-      // Inject expectedAmount for each paymentSchedule qist/slot
-      paymentSchedule = paymentSchedule.map(entry => ({
-        dueDate: entry.dueDate,
-        status: 'pending',
-        expectedAmount: Number(perInstallmentAmount) || 0,
-        paidAmount: 0,
-        shortfallAmount: Number(perInstallmentAmount) || 0,
-      }));
+    const { scheduleType, startDate, isCashSale, perInstallmentAmount, installmentPrice, advanceAmount } = rest;
+    if (!isCashSale && perInstallmentAmount && scheduleType && startDate) {
+      const price = Number(installmentPrice) || 0;
+      const advance = Number(advanceAmount) || 0;
+      const remainingAmount = price - advance;
+      paymentSchedule = generatePaymentSchedule(startDate, remainingAmount, perInstallmentAmount, scheduleType);
     }
 
     const newInstallments = await Installment.create([{
@@ -469,14 +580,17 @@ export const rolloverInstallment = async (req, res) => {
       customer: customer._id || customer,
       previousInstallmentId: oldInstallmentId,
       paymentSchedule,
+      totalInstallments: paymentSchedule.length,
       createdBy: req.user.id,
       ...(isValidObjectId(distributor) ? { distributor } : {}),
     }], { session });
 
     const newInstallment = newInstallments[0];
 
-    await session.commitTransaction();
-    session.endSession();
+    if (session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
 
     res.status(201).json({
       success: true,
@@ -484,8 +598,10 @@ export const rolloverInstallment = async (req, res) => {
       data: { oldInstallmentId, newInstallment }
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
     console.error('[rolloverInstallment]', error);
     res.status(400).json({ success: false, message: 'Rollover failed', error: error.message });
   }
@@ -498,19 +614,61 @@ export const getInstallmentLedger = async (req, res) => {
   try {
     const installment = await Installment.findById(req.params.id)
       .populate('customer', 'fullName phone khataNumber')
-      .populate('paymentSchedule.collectedBy', 'name');
+      .populate('paymentSchedule.collectedBy', 'name fullName');
 
     if (!installment) {
       return res.status(404).json({ success: false, message: 'Installment not found' });
     }
 
+    // Fetch ALL Payment documents for this installment (for split payment sub-rows)
+    const Payment = (await import('../models/Payment.js')).default;
+    const allPayments = await Payment.find({ installment: installment._id })
+      .populate('collectedBy', 'name fullName')
+      .sort({ paidDate: 1 })
+      .lean();
+
+    // Build a map: scheduleEntryId (string) -> array of Payment docs
+    const paymentsBySlot = {};
+    for (const pmt of allPayments) {
+      const key = String(pmt.scheduleEntryId);
+      if (!paymentsBySlot[key]) paymentsBySlot[key] = [];
+      paymentsBySlot[key].push(pmt);
+    }
+
+    // Sort schedule chronologically
     const schedule = [...(installment.paymentSchedule || [])].sort(
       (a, b) => new Date(a.dueDate) - new Date(b.dueDate)
     );
 
-    const totalPaid    = schedule.filter(s => s.status === 'paid').reduce((sum, s) => sum + (s.paidAmount || installment.perInstallmentAmount || 0), 0);
-    const totalMissed  = schedule.filter(s => s.status === 'missed').reduce((sum, s) => sum + (installment.perInstallmentAmount || 0), 0);
-    const totalPending = schedule.filter(s => s.status === 'pending').reduce((sum, s) => sum + (installment.perInstallmentAmount || 0), 0);
+    // Enrich each schedule slot with its individual payment sub-rows
+    const enrichedSchedule = schedule.map(slot => {
+      const slotPayments = paymentsBySlot[String(slot._id)] || [];
+      const isSplit = slotPayments.length > 1;
+      const totalCollectedForSlot = slotPayments.reduce((s, p) => s + (p.amount || 0), 0);
+      const progressPercent = slot.expectedAmount > 0
+        ? Math.min(100, Math.round((totalCollectedForSlot / slot.expectedAmount) * 100))
+        : 0;
+
+      return {
+        ...slot.toObject(),
+        payments: slotPayments,
+        isSplit,
+        totalCollectedForSlot,
+        progressPercent,
+        paymentCount: slotPayments.length,
+        paymentId: slotPayments[slotPayments.length - 1]?._id,
+        receiptNumber: slotPayments[slotPayments.length - 1]?.receiptNumber,
+      };
+    });
+
+    // Summary stats
+    const totalActuallyPaid = schedule.reduce((s, e) => s + (e.paidAmount || 0), 0);
+    const totalMissedAmount = schedule.filter(s => s.status === 'missed').reduce((sum, s) => sum + (s.shortfallAmount || s.expectedAmount || 0), 0);
+    const totalArrears      = schedule.reduce((s, e) => s + (e.shortfallAmount || 0), 0);
+    const totalPending      = schedule.filter(s => s.status === 'pending').reduce((sum, s) => sum + (installment.perInstallmentAmount || 0), 0);
+
+    // Chronological payment history view (all individual payment docs)
+    const paymentHistory = [...allPayments].sort((a, b) => new Date(a.paidDate) - new Date(b.paidDate));
 
     res.status(200).json({
       success: true,
@@ -522,24 +680,37 @@ export const getInstallmentLedger = async (req, res) => {
           brand: installment.brand,
           model: installment.model,
           category: installment.category,
+          customCategory: installment.customCategory,
+          customItemName: installment.customItemName,
+          color: installment.color,
           perInstallmentAmount: installment.perInstallmentAmount,
           installmentPrice: installment.installmentPrice,
           advanceAmount: installment.advanceAmount,
           remainingAmount: installment.remainingAmount,
           totalPaid: installment.totalPaid,
+          totalArrears: installment.totalArrears,
           investorName: installment.investorName,
           scheduleType: installment.scheduleType,
           status: installment.status,
           isCashSale: installment.isCashSale,
+          assetId: installment.assetId,
         },
-        schedule,
-        summary: { totalPaid, totalMissed, totalPending, arrears: totalMissed }
+        schedule: enrichedSchedule,
+        paymentHistory,
+        summary: {
+          totalPaid: totalActuallyPaid,
+          totalMissed: totalMissedAmount,
+          totalArrears,
+          totalPending,
+          arrears: totalArrears,
+        }
       }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
   }
 };
+
 
 // @desc    Status auto-update helper
 export const updateInstallmentStatusAfterPayment = async (installmentId) => {

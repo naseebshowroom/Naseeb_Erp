@@ -35,7 +35,15 @@ export default function SettingsPage() {
         const res = await settingsService.get();
         if (res.success && res.data) {
           const d = res.data;
-          resetProfile({ shopName: d.shopName, ownerName: d.ownerName, phone: d.phone, city: d.city, address: d.address });
+          resetProfile({
+            shopName: d.shopName,
+            ownerName: d.ownerName,
+            phone: d.phone,
+            city: d.city,
+            address: d.address,
+            receiptBrands: d.receiptBrands,
+            receiptColors: d.receiptColors
+          });
           resetTerms({ termsElectronics: d.termsElectronics, termsMotorcycle: d.termsMotorcycle, termsCar: d.termsCar });
         }
       } catch (err) {
@@ -158,6 +166,16 @@ export default function SettingsPage() {
                 <div className="space-y-1.5 md:col-span-2">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Full Address *</label>
                   <div className="relative"><MapPin size={16} className="absolute left-3 top-3 text-slate-400" /><textarea {...regProfile('address')} rows={3} className={`${INPUT} pl-10`} /></div>
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Receipt Brand Options (Comma/Slash Separated)</label>
+                  <input {...regProfile('receiptBrands')} placeholder="Honda / Super Power / Unique / Impress / Express / Galaxy / United" className={INPUT} />
+                  <p className="text-xs text-slate-400 font-medium">Sale receipt par aane wale motorcycle brands yahan likhein (e.g. Impress Honda, Super Power, etc.).</p>
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Receipt Color Options (Comma/Slash Separated)</label>
+                  <input {...regProfile('receiptColors')} placeholder="Red / Black / Selvar / Blue" className={INPUT} />
+                  <p className="text-xs text-slate-400 font-medium">Sale receipt par aane wale motorcycle colors yahan likhein.</p>
                 </div>
               </div>
             </div>

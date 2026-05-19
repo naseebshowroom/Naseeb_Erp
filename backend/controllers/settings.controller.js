@@ -17,7 +17,9 @@ export const getSettings = async (req, res) => {
         phone: '0000-0000000',
         termsElectronics: '1. Standard Electronics Terms',
         termsMotorcycle: '1. Standard Motorcycle Terms',
-        termsCar: '1. Standard Car Terms'
+        termsCar: '1. Standard Car Terms',
+        receiptBrands: 'Honda / Super Power / Unique / Impress / Express / Galaxy / United',
+        receiptColors: 'Red / Black / Selvar / Blue'
       });
     }
 

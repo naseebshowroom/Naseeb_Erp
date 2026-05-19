@@ -1,5 +1,6 @@
 import Payment from '../models/Payment.js';
 import Installment from '../models/Installment.js';
+import CollectionAssignment from '../models/CollectionAssignment.js';
 import mongoose from 'mongoose';
 
 // Helper for start and end of day dates
@@ -14,86 +15,217 @@ const getDayBounds = (dateString) => {
 // @route   POST /api/payments
 // @access  Private
 export const recordPayment = async (req, res) => {
+  const isReplicaSet = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSetWithPrimary' || 
+                       mongoose.connection?.client?.topology?.description?.type === 'Sharded';
+  const session = isReplicaSet ? await mongoose.startSession() : null;
+  if (session) session.startTransaction();
+
   try {
-    const { installment, customer, amount, scheduleEntryId, paymentDate, notes, receivedBy, collectorName, paymentMode } = req.body;
+    const installmentId = req.body.installmentId || req.body.installment;
+    const scheduleEntryId = req.body.scheduleEntryId;
+    const paidAmount = req.body.paidAmount !== undefined ? req.body.paidAmount : req.body.amount;
+    const collectedBy = req.body.collectedBy || req.body.receivedBy || req.user?._id || req.user?.id;
+    const paidDate = req.body.paidDate || req.body.paymentDate || new Date();
+    const notes = req.body.notes || req.body.note;
+    const paymentMode = req.body.paymentMode || 'cash';
 
-    const amountNum = Number(amount);
-    if (!amountNum || amountNum <= 0) throw new Error('Valid amount required');
+    // 1. Fetch Installment
+    const installment = await Installment
+      .findById(installmentId)
+      .session(session);
 
-    // 1. Verify installment exists
-    const instRecord = await Installment.findById(installment);
-    if (!instRecord) throw new Error('Installment not found');
+    if (!installment) {
+      if (session) await session.abortTransaction();
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Installment/Khata account nahi mila!' 
+      });
+    }
 
-    // 2. Create Payment record
-    const payment = await Payment.create({
-      installment,
-      customer: customer || instRecord.customer,
-      amount: amountNum,
+    // 2. Locate the specific schedule entry
+    let scheduleEntry;
+    if (scheduleEntryId) {
+      scheduleEntry = installment.paymentSchedule.id(scheduleEntryId);
+    } else {
+      // Automatically find the oldest unpaid (missed, pending, or partially_paid) schedule entry
+      const unpaidEntries = installment.paymentSchedule
+        .filter(e => e.status === 'missed' || e.status === 'pending' || e.status === 'partially_paid')
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      
+      if (unpaidEntries.length > 0) {
+        scheduleEntry = unpaidEntries[0];
+      }
+    }
+
+    if (!scheduleEntry) {
+      if (session) await session.abortTransaction();
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Is product ki tamam qistein pehle se ada ho chuki hain!' 
+      });
+    }
+
+    // 3. Determine actual paid amount vs expected
+    const expected = scheduleEntry.expectedAmount;
+    const actualPaid = Number(paidAmount) || 0;
+    
+    let paymentStatus = 'pending';
+    let shortfall = 0;
+
+    if (actualPaid >= expected) {
+      paymentStatus = 'paid';
+      shortfall = 0;
+    } else if (actualPaid > 0 && actualPaid < expected) {
+      paymentStatus = 'partially_paid';
+      shortfall = expected - actualPaid;
+    } else {
+      paymentStatus = 'missed';
+      shortfall = expected;
+    }
+
+    // 4. Update schedule entry fields
+    scheduleEntry.status = paymentStatus;
+    scheduleEntry.paidAmount = actualPaid;
+    scheduleEntry.shortfallAmount = shortfall;
+    scheduleEntry.collectedBy = collectedBy || req.user?._id || req.user?.id;
+    scheduleEntry.paidDate = paidDate || new Date();
+    if (notes) scheduleEntry.note = notes;
+
+    // 5. Recalculate Installment totals
+    const totalPaid = installment.paymentSchedule
+      .reduce((sum, entry) => sum + (entry.paidAmount || 0), 0);
+
+    const totalArrears = installment.paymentSchedule
+      .reduce((sum, entry) => sum + (entry.shortfallAmount || 0), 0);
+
+    installment.totalPaid = totalPaid;
+    installment.remainingAmount = Math.max(
+      0, 
+      installment.installmentPrice - (installment.advanceAmount || 0) - totalPaid
+    );
+    installment.totalArrears = totalArrears;
+
+    // Recalculate installmentsPaid count
+    const paidCount = installment.paymentSchedule
+      .filter(e => e.status === 'paid').length;
+    installment.installmentsPaid = paidCount;
+
+    // Adjust overall installment status
+    if (installment.remainingAmount <= 0) {
+      installment.status = 'completed';
+    } else if (
+      installment.paymentSchedule.filter(
+        e => e.status === 'pending'
+      ).length <= 3
+    ) {
+      installment.status = 'near_completion';
+    } else {
+      installment.status = 'active';
+    }
+
+    await installment.save({ session });
+
+    // 6. Generate Automated Receipt Number
+    // Year-count pattern (e.g. 2026-0001)
+    const currentYear = new Date().getFullYear();
+    const count = await Payment.countDocuments({
+      receiptNumber: new RegExp(`^${currentYear}-`)
+    }).session(session);
+    
+    const sequentialNum = String(count + 1).padStart(4, '0');
+    const receiptNumber = `${currentYear}-${sequentialNum}`;
+
+    // 7. Create Payment document (Audit Log)
+    // Populate snapshot schema with actual details
+    const customer = await mongoose.model('Customer')
+      .findById(installment.customer)
+      .session(session);
+
+    // Determine if this is a split/partial payment for an existing slot
+    // A split payment occurs when:
+    // (a) This payment is itself partial (partially_paid), OR
+    // (b) The slot already had a prior partial payment (we're completing it)
+    const existingPaymentsOnSlot = await Payment.countDocuments({
+      scheduleEntryId: scheduleEntry._id
+    }).session(session);
+    const isPartOfSplit = paymentStatus === 'partially_paid' || existingPaymentsOnSlot > 0;
+    const splitGroup = isPartOfSplit ? `${installment._id}_${scheduleEntry._id}` : undefined;
+
+    const payment = new Payment({
+      installment: installment._id,
+      customer: installment.customer,
+      scheduleEntryId: scheduleEntry._id,
+      amount: actualPaid,
       paymentMode: paymentMode || 'cash',
-      scheduleEntryId,
-      paymentDate: paymentDate || new Date(),
+      collectedBy: collectedBy || req.user?._id || req.user?.id,
+      paidDate: paidDate || new Date(),
+      receiptNumber,
       notes,
-      collectorName,
-      receivedBy: receivedBy || req.user.id,
-      createdBy: req.user.id
+
+      // Split payment tracking
+      relatedDueDate: scheduleEntry.dueDate,
+      isPartOfSplitPayment: isPartOfSplit,
+      splitPaymentGroup: splitGroup,
+      
+      // Snapshot fields for fast reporting
+      customerName: customer?.fullName || '—',
+      customerPhone: customer?.phone || '—',
+      itemDescription: (installment.category === 'other' ? (installment.customItemName || installment.customCategory) : `${installment.brand} ${installment.model}`).trim(),
+      category: installment.category,
+      khataNumber: installment.khataNumber || '—',
+      totalPrice: String(installment.installmentPrice || 0),
+      remainingAfterPayment: installment.remainingAmount,
+      dueDate: scheduleEntry.dueDate,
     });
 
-    // 3. Update financial totals
-    instRecord.totalPaid += amountNum;
+    await payment.save({ session });
 
-    // 4. Mark slots as paid sequentially
-    let amountLeft = amountNum;
-    let newlyPaidCount = 0;
+    // 8. Auto-complete collection assignment for this worker today if exists
+    const assignmentStart = new Date(paidDate);
+    assignmentStart.setHours(0, 0, 0, 0);
+    const assignmentEnd = new Date(paidDate);
+    assignmentEnd.setHours(23, 59, 59, 999);
 
-    // If a specific slot was targeted, start with that one
-    if (scheduleEntryId) {
-      const targetSlot = instRecord.paymentSchedule.id(scheduleEntryId);
-      if (targetSlot && targetSlot.status === 'pending') {
-        targetSlot.status = 'paid';
-        targetSlot.paidDate = paymentDate || new Date();
-        const slotAmount = Math.min(amountLeft, instRecord.perInstallmentAmount);
-        targetSlot.paidAmount = slotAmount;
-        amountLeft -= slotAmount;
-        newlyPaidCount++;
+    await CollectionAssignment.findOneAndUpdate(
+      {
+        worker: collectedBy,
+        installment: installmentId,
+        date: { $gte: assignmentStart, $lte: assignmentEnd },
+        status: 'pending'
+      },
+      {
+        status: 'collected',
+        amountCollected: actualPaid,
+        notes: notes || 'Collected via payment endpoint'
+      },
+      { session }
+    );
+
+    if (session) await session.commitTransaction();
+
+    res.status(201).json({
+      success: true,
+      message: `Adaigi successfully darj ho gayi! Receipt No: ${receiptNumber}`,
+      payment,
+      scheduleEntry,
+      installmentUpdate: {
+        totalPaid: installment.totalPaid,
+        remainingAmount: installment.remainingAmount,
+        totalArrears: installment.totalArrears,
+        status: installment.status,
       }
-    }
+    });
 
-    // If there's still money left (bulk payment), mark subsequent pending slots
-    if (amountLeft >= instRecord.perInstallmentAmount * 0.8) { // Allow some tolerance
-      for (let slot of instRecord.paymentSchedule) {
-        if (amountLeft < instRecord.perInstallmentAmount * 0.8) break;
-        if (slot.status === 'pending') {
-          slot.status = 'paid';
-          slot.paidDate = paymentDate || new Date();
-          const slotAmount = Math.min(amountLeft, instRecord.perInstallmentAmount);
-          slot.paidAmount = slotAmount;
-          amountLeft -= slotAmount;
-          newlyPaidCount++;
-        }
-      }
-    }
-
-    // If no specific slot was marked but money was paid, we still count it as at least 1 installment if it covers most of it
-    if (newlyPaidCount === 0 && amountNum > 0) {
-      newlyPaidCount = Math.floor(amountNum / instRecord.perInstallmentAmount) || 1;
-    }
-
-    instRecord.installmentsPaid += newlyPaidCount;
-
-    // Update status based on remaining installments
-    const remainingCount = instRecord.totalInstallments - instRecord.installmentsPaid;
-    if (instRecord.remainingAmount <= 0 || remainingCount <= 0) {
-      instRecord.status = 'completed';
-    } else if (remainingCount <= 3) {
-      instRecord.status = 'near_completion';
-    }
-
-    await instRecord.save();
-
-    res.status(201).json({ success: true, data: payment });
   } catch (error) {
-    console.error('[recordPayment]', error.message);
-    res.status(400).json({ success: false, message: error.message || 'Payment failed', error: error.message });
+    if (session) await session.abortTransaction();
+    console.error('[recordPayment Error]', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Payment process failed',
+      error: error.message 
+    });
+  } finally {
+    if (session) session.endSession();
   }
 };
 
@@ -104,17 +236,26 @@ export const recordPayment = async (req, res) => {
 export const getPayments = async (req, res) => {
   try {
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    const limit = parseInt(req.query.limit, 10) || 1000; // Increase default limit for full history listing
     const startIndex = (page - 1) * limit;
 
     const query = {};
     
     if (req.query.customer) query.customer = req.query.customer;
-    if (req.query.installment) query.installment = req.query.installment;
-    if (req.query.worker) query.receivedBy = req.query.worker;
+    if (req.query.installmentId || req.query.installment) {
+      query.installment = req.query.installmentId || req.query.installment;
+    }
+    if (req.query.collectedBy || req.query.worker) {
+      query.collectedBy = req.query.collectedBy || req.query.worker;
+    }
 
-    if (req.query.startDate && req.query.endDate) {
-      query.paymentDate = { 
+    if (req.query.date) {
+      const dateVal = req.query.date === 'today' ? new Date() : new Date(req.query.date);
+      const startOfDay = new Date(dateVal.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(dateVal.setHours(23, 59, 59, 999));
+      query.paidDate = { $gte: startOfDay, $lte: endOfDay };
+    } else if (req.query.startDate && req.query.endDate) {
+      query.paidDate = { 
         $gte: new Date(req.query.startDate), 
         $lte: new Date(req.query.endDate) 
       };
@@ -123,12 +264,12 @@ export const getPayments = async (req, res) => {
     const total = await Payment.countDocuments(query);
     const payments = await Payment.find(query)
       .populate('customer', 'fullName cnic phone')
-      .populate('receivedBy', 'name role')
+      .populate('collectedBy', 'fullName name role')
       .populate({
         path: 'installment',
-        select: 'category brand model'
+        select: 'category brand model khataNumber installmentPrice remainingAmount totalPaid status'
       })
-      .sort({ paymentDate: -1 })
+      .sort({ paidDate: -1 })
       .skip(startIndex)
       .limit(limit)
       .lean();
@@ -153,12 +294,12 @@ export const getCollectedToday = async (req, res) => {
     const { startOfDay, endOfDay } = getDayBounds();
 
     const payments = await Payment.find({
-      paymentDate: { $gte: startOfDay, $lte: endOfDay }
+      paidDate: { $gte: startOfDay, $lte: endOfDay }
     })
       .populate('customer', 'fullName cnic phone')
       .populate('installment', 'brand model category')
-      .populate('receivedBy', 'name role')
-      .sort({ paymentDate: -1 });
+      .populate('collectedBy', 'fullName name role')
+      .sort({ paidDate: -1 });
 
     res.status(200).json({ success: true, count: payments.length, data: payments });
   } catch (error) {
@@ -187,8 +328,10 @@ export const getReceiptData = async (req, res) => {
 // @route   DELETE /api/payments/:id
 // @access  Private (Owner only)
 export const deletePayment = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const isReplicaSet = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSetWithPrimary' || 
+                       mongoose.connection?.client?.topology?.description?.type === 'Sharded';
+  const session = isReplicaSet ? await mongoose.startSession() : null;
+  if (session) session.startTransaction();
 
   try {
     const payment = await Payment.findById(req.params.id).session(session);
@@ -223,13 +366,13 @@ export const deletePayment = async (req, res) => {
 
     await Payment.deleteOne({ _id: payment._id }).session(session);
     
-    await session.commitTransaction();
-    session.endSession();
+    if (session) await session.commitTransaction();
+    if (session) session.endSession();
 
     res.status(200).json({ success: true, message: 'Payment successfully reversed' });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session) await session.abortTransaction();
+    if (session) session.endSession();
     res.status(500).json({ success: false, message: 'Failed to reverse payment', error: error.message });
   }
 };
@@ -243,7 +386,7 @@ export const getDailySummary = async (req, res) => {
 
     // 1. Collections made today
     const collections = await Payment.aggregate([
-      { $match: { paymentDate: { $gte: startOfDay, $lte: endOfDay } } },
+      { $match: { paidDate: { $gte: startOfDay, $lte: endOfDay } } },
       { 
         $group: { 
           _id: null, 
@@ -255,10 +398,10 @@ export const getDailySummary = async (req, res) => {
 
     // 2. Collections grouped by worker
     const byWorker = await Payment.aggregate([
-      { $match: { paymentDate: { $gte: startOfDay, $lte: endOfDay } } },
+      { $match: { paidDate: { $gte: startOfDay, $lte: endOfDay } } },
       { 
         $group: { 
-          _id: '$receivedBy', 
+          _id: '$collectedBy', 
           amount: { $sum: '$amount' }, 
           count: { $sum: 1 } 
         } 
@@ -328,12 +471,12 @@ export const getMonthlySummary = async (req, res) => {
     date.setHours(0, 0, 0, 0);
 
     const paymentsAgg = await Payment.aggregate([
-      { $match: { paymentDate: { $gte: date } } },
+      { $match: { paidDate: { $gte: date } } },
       {
         $group: {
           _id: { 
-            year: { $year: "$paymentDate" }, 
-            month: { $month: "$paymentDate" } 
+            year: { $year: "$paidDate" }, 
+            month: { $month: "$paidDate" } 
           },
           totalAmount: { $sum: "$amount" }
         }
@@ -390,8 +533,10 @@ export const getMonthlySummary = async (req, res) => {
 // @route   PATCH /api/payments/schedule/:scheduleId/status
 // @access  Private
 export const updateScheduleStatus = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const isReplicaSet = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSetWithPrimary' || 
+                       mongoose.connection?.client?.topology?.description?.type === 'Sharded';
+  const session = isReplicaSet ? await mongoose.startSession() : null;
+  if (session) session.startTransaction();
   
   try {
     const { scheduleId } = req.params;
@@ -409,7 +554,7 @@ export const updateScheduleStatus = async (req, res) => {
     }).session(session);
 
     if (!installment) {
-      await session.abortTransaction();
+      if (session) await session.abortTransaction();
       return res.status(404).json({ 
         success: false, 
         message: 'Schedule entry not found' 
@@ -476,6 +621,27 @@ export const updateScheduleStatus = async (req, res) => {
 
     await installment.save({ session });
 
+    // Fetch customer details for snapshot
+    const customer = await mongoose.model('Customer')
+      .findById(installment.customer)
+      .session(session);
+
+    // Generate Automated Receipt Number
+    const currentYear = new Date().getFullYear();
+    const count = await Payment.countDocuments({
+      receiptNumber: new RegExp(`^${currentYear}-`)
+    }).session(session);
+    
+    const sequentialNum = String(count + 1).padStart(4, '0');
+    const receiptNumber = `${currentYear}-${sequentialNum}`;
+
+    // Determine split payment fields
+    const existingSlotPayments = await Payment.countDocuments({
+      scheduleEntryId: scheduleId
+    }).session(session);
+    const isPartOfSplit = realStatus === 'partially_paid' || existingSlotPayments > 0;
+    const splitGroup = isPartOfSplit ? `${installment._id}_${scheduleId}` : undefined;
+
     // Create Payment record
     const payment = new Payment({
       installment: installment._id,
@@ -485,13 +651,30 @@ export const updateScheduleStatus = async (req, res) => {
       expectedAmount: expectedAmount,
       shortfall: shortfall,
       status: realStatus,
-      collectedBy,
+      collectedBy: collectedBy || req.user?._id || req.user?.id,
       paymentDate: paidDate || new Date(),
-      note,
+      paidDate: paidDate || new Date(),
+      receiptNumber,
+      notes: note,
+
+      // Split payment tracking
+      relatedDueDate: scheduleEntry.dueDate,
+      isPartOfSplitPayment: isPartOfSplit,
+      splitPaymentGroup: splitGroup,
+
+      // Snapshot fields for fast reporting
+      customerName: customer?.fullName || '—',
+      customerPhone: customer?.phone || '—',
+      itemDescription: (installment.category === 'other' ? (installment.customItemName || installment.customCategory) : `${installment.brand} ${installment.model}`).trim(),
+      category: installment.category,
+      khataNumber: installment.khataNumber || '—',
+      totalPrice: String(installment.installmentPrice || 0),
+      remainingAfterPayment: installment.remainingAmount,
+      dueDate: scheduleEntry.dueDate,
     });
     await payment.save({ session });
 
-    await session.commitTransaction();
+    if (session) await session.commitTransaction();
 
     res.json({
       success: true,
@@ -505,7 +688,7 @@ export const updateScheduleStatus = async (req, res) => {
     });
 
   } catch (error) {
-    await session.abortTransaction();
+    if (session) await session.abortTransaction();
     console.error('Payment update error:', error);
     res.status(500).json({ 
       success: false, 
@@ -513,13 +696,13 @@ export const updateScheduleStatus = async (req, res) => {
       error: error.message 
     });
   } finally {
-    session.endSession();
+    if (session) session.endSession();
   }
 };
 
 // @desc    Apply Bulk Custom FIFO Payment
-// @access  Private Helper
-const applyBulkPayment = async (
+// @access  Public Helper
+export const applyBulkPayment = async (
   installmentId, 
   totalAmountReceived, 
   collectedBy, 
@@ -542,6 +725,11 @@ const applyBulkPayment = async (
     .sort((a, b) => 
       new Date(a.dueDate) - new Date(b.dueDate)
     );
+
+  // Get customer details for snapshot
+  const customer = await mongoose.model('Customer')
+    .findById(installment.customer)
+    .session(session);
 
   let remainingToDistribute = totalAmountReceived;
   const updatedEntries = [];
@@ -577,6 +765,14 @@ const applyBulkPayment = async (
 
     updatedEntries.push(entry._id);
 
+    // Generate unique receipt number for bulk payments
+    const currentYear = new Date().getFullYear();
+    const count = await Payment.countDocuments({
+      receiptNumber: new RegExp(`^${currentYear}-`)
+    }).session(session);
+    const sequentialNum = String(count + 1).padStart(4, '0');
+    const receiptNumber = `${currentYear}-${sequentialNum}`;
+
     // Create individual Payment record for audit history
     const payment = new Payment({
       installment: installment._id,
@@ -588,6 +784,24 @@ const applyBulkPayment = async (
       status: entry.status,
       collectedBy,
       paymentDate: new Date(),
+      paidDate: new Date(),
+      receiptNumber,
+
+      // Split payment tracking
+      // Bulk payments that partially fill a slot are part of a split group
+      relatedDueDate: entry.dueDate,
+      isPartOfSplitPayment: entry.status === 'partially_paid',
+      splitPaymentGroup: entry.status === 'partially_paid' ? `${installment._id}_${entry._id}` : undefined,
+
+      // Snapshot fields for fast reporting
+      customerName: customer?.fullName || '—',
+      customerPhone: customer?.phone || '—',
+      itemDescription: (installment.category === 'other' ? (installment.customItemName || installment.customCategory) : `${installment.brand} ${installment.model}`).trim(),
+      category: installment.category,
+      khataNumber: installment.khataNumber || '—',
+      totalPrice: String(installment.installmentPrice || 0),
+      remainingAfterPayment: installment.remainingAmount,
+      dueDate: entry.dueDate,
     });
     await payment.save({ session });
   }
@@ -622,21 +836,23 @@ const applyBulkPayment = async (
 // @route   POST /api/payments/bulk-payment
 // @access  Private
 export const bulkPayment = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const isReplicaSet = mongoose.connection?.client?.topology?.description?.type === 'ReplicaSetWithPrimary' || 
+                       mongoose.connection?.client?.topology?.description?.type === 'Sharded';
+  const session = isReplicaSet ? await mongoose.startSession() : null;
+  if (session) session.startTransaction();
   try {
     const { installmentId, totalAmount, collectedBy } = req.body;
     const result = await applyBulkPayment(installmentId, Number(totalAmount), collectedBy, session);
-    await session.commitTransaction();
+    if (session) await session.commitTransaction();
     res.json({
       success: true,
       message: `Bulk payment of Rs. ${totalAmount} processed successfully.`,
       ...result
     });
   } catch (error) {
-    await session.abortTransaction();
+    if (session) await session.abortTransaction();
     res.status(500).json({ success: false, message: error.message });
   } finally {
-    session.endSession();
+    if (session) session.endSession();
   }
 };

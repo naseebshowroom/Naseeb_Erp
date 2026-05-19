@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const inventorySchema = new mongoose.Schema({
   category: {
     type: String,
-    enum: ['motorcycle', 'electronics'],
+    enum: ['motorcycle', 'electronics', 'car', 'mobile', 'ac', 'lcd', 'fridge', 'washing_machine', 'other'],
     required: true
   },
   elecType: { 

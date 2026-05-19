@@ -56,12 +56,18 @@ export const getInventoryStats = async (req, res) => {
       }
     ]);
 
-    const summaryMoto = { total: 0, onInstallment: 0, completed: 0, available: 0 };
-    const summaryElec = { total: 0, onInstallment: 0, completed: 0, available: 0 };
+    const categories = ['motorcycle', 'electronics', 'car', 'mobile', 'ac', 'lcd', 'fridge', 'washing_machine', 'other'];
+    const summary = {};
+    categories.forEach(cat => {
+      summary[cat] = { total: 0, onInstallment: 0, completed: 0, available: 0 };
+    });
 
     stats.forEach(s => {
-      const isMoto = s._id.category === 'motorcycle';
-      const target = isMoto ? summaryMoto : summaryElec;
+      const cat = s._id.category || 'other';
+      if (!summary[cat]) {
+        summary[cat] = { total: 0, onInstallment: 0, completed: 0, available: 0 };
+      }
+      const target = summary[cat];
 
       target.total += s.count;
       if (s._id.status === 'available') target.available += s.count;
@@ -69,7 +75,7 @@ export const getInventoryStats = async (req, res) => {
       else if (s._id.status === 'sold') target.completed += s.count;
     });
 
-    res.status(200).json({ success: true, data: { motorcycle: summaryMoto, electronics: summaryElec } });
+    res.status(200).json({ success: true, data: summary });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
   }
@@ -77,13 +83,29 @@ export const getInventoryStats = async (req, res) => {
 
 export const getInventoryAlerts = async (req, res) => {
   try {
-    // Dummy alerts for now or basic low stock calculation
-    const motoCount = await Inventory.countDocuments({ category: 'motorcycle', status: 'available' });
-    const elecCount = await Inventory.countDocuments({ category: 'electronics', status: 'available' });
+    const categories = [
+      { id: 'motorcycle', name: 'Motorcycle', limit: 5 },
+      { id: 'car', name: 'Gari', limit: 2 },
+      { id: 'mobile', name: 'Mobile', limit: 5 },
+      { id: 'ac', name: 'AC', limit: 3 },
+      { id: 'lcd', name: 'LCD / TV', limit: 3 },
+      { id: 'fridge', name: 'Fridge', limit: 3 },
+      { id: 'washing_machine', name: 'Washing Machine', limit: 3 },
+      { id: 'electronics', name: 'Electronics', limit: 5 }
+    ];
 
     const alerts = [];
-    if (motoCount < 5) alerts.push({ id: 1, type: 'low_stock', message: `Motorcycle ka stock kam hai! Sirf ${motoCount} baqi hain.` });
-    if (elecCount < 10) alerts.push({ id: 2, type: 'low_stock', message: `Electronics ka stock kam hai! Sirf ${elecCount} baqi hain.` });
+    let id = 1;
+    for (const cat of categories) {
+      const count = await Inventory.countDocuments({ category: cat.id, status: 'available' });
+      if (count < cat.limit) {
+        alerts.push({
+          id: id++,
+          type: 'low_stock',
+          message: `${cat.name} ka stock kam hai! Sirf ${count} baqi hain.`
+        });
+      }
+    }
 
     res.status(200).json({ success: true, data: alerts });
   } catch (error) {

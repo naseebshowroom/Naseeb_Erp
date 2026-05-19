@@ -12,6 +12,7 @@ import { useForm } from 'react-hook-form'
 import { SkeletonTable } from '@/components/ui/Skeleton'
 import ErrorState from '@/components/ui/ErrorState'
 import Pagination, { usePagination } from '@/components/ui/Pagination'
+import { formatPhone } from '@/utils/formatters'
 
 const INPUT = 'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-black transition-colors';
 
@@ -254,7 +255,12 @@ export default function DistributorsPage() {
                 <div>
                   <label className="text-xs font-bold text-slate-700 block mb-1">Phone *</label>
                   <input
-                    {...register('phone', { required: 'Phone zaroori hai' })}
+                    {...register('phone', { 
+                      required: 'Phone zaroori hai',
+                      onChange: (e) => {
+                        e.target.value = formatPhone(e.target.value)
+                      }
+                    })}
                     className={INPUT}
                     placeholder="0300-1234567"
                   />

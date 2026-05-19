@@ -5,6 +5,7 @@ import {
   TrendingUp, Activity, Plus, CheckCircle2,
   ChevronRight, CalendarClock, Phone, Package, ListChecks
 } from 'lucide-react';
+import { getItemDisplayName, getItemIcon } from '@/utils/itemHelper';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell
@@ -14,6 +15,10 @@ import { formatCurrency } from '@/lib/utils';
 import api from '@/lib/axios';
 import { SkeletonDashboard } from '@/components/ui/Skeleton';
 import ErrorState from '@/components/ui/ErrorState';
+import toast from 'react-hot-toast';
+import ReceiptButton from '@/components/payments/ReceiptButton';
+import CollectPaymentModal from '@/components/payments/CollectPaymentModal';
+import { useAuthStore } from '@/store/authStore';
 
 // ── Components ──────────────────────────────────────────────
 function StatCard({ title, value, icon: Icon, colorClass }) {
@@ -399,10 +404,16 @@ function VasooliSection() {
   const [activeTab, setActiveTab] = useState('daily')
   const [rows, setRows]           = useState([])
   const [loading, setLoading]     = useState(false)
-  const [payModal, setPayModal]   = useState(null) // { scheduleEntry, installmentId, customer, perInstallmentAmount }
+
+  // Collect modal states
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [preSelectedInstallmentId, setPreSelectedInstallmentId] = useState(null)
+
+  const { user: currentUser } = useAuthStore()
 
   const load = async (type) => {
-    setLoading(true)
+    setLoading(type === activeTab ? false : true) // Avoid flicker if active tab is same
     try {
       const r = await api.get(`/installments/due-today?type=${type}`)
       setRows(r.data.data || [])
@@ -414,9 +425,18 @@ function VasooliSection() {
 
   const markStatus = async (scheduleId, installmentId, status) => {
     try {
-      await api.patch(`/payments/schedule/${scheduleId}/status`, { status, installmentId })
-      load(activeTab)
-    } catch (e) { alert(e.response?.data?.message || 'Error') }
+      await api.patch(`/payments/schedule/${scheduleId}/status`, { status, installmentId });
+      toast.success(`Qist status '${status}' kar di gayi.`);
+      load(activeTab);
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Error in registering payment');
+    }
+  }
+
+  const handleOpenCollectModal = (row) => {
+    setSelectedCustomer(row.customer);
+    setPreSelectedInstallmentId(row._id);
+    setModalOpen(true);
   }
 
   const totalDue = rows.reduce((s, r) => s + (r.perInstallmentAmount || 0), 0)
@@ -432,71 +452,92 @@ function VasooliSection() {
         </div>
         <div className="flex gap-4 text-sm">
           <div className="text-right">
-            <div className="text-slate-400">Total Due</div>
+            <div className="text-slate-400 font-medium">Total Due</div>
             <div className="font-black text-slate-900">{formatCurrency(totalDue)}</div>
           </div>
           <div className="text-right">
-            <div className="text-slate-400">Collected</div>
+            <div className="text-slate-400 font-medium">Collected</div>
             <div className="font-black text-emerald-600">{formatCurrency(totalCollected)}</div>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4 w-fit">
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4 w-fit border border-slate-200">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-colors ${activeTab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
             {t.label}
           </button>
         ))}
       </div>
 
-      <div className="erp-card overflow-hidden">
+      <div className="erp-card overflow-hidden border border-slate-200 rounded-2xl shadow-sm bg-white">
         {loading ? (
-          <div className="p-10 text-center text-slate-400 animate-pulse">Loading vasooli...</div>
+          <div className="p-12 text-center text-slate-400 animate-pulse font-medium">Loading vasooli list...</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {['Customer', 'Item', 'Khata #', 'Due Amount', 'Schedule', 'Status', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500">{h}</th>
+                  {['Customer (Gahak)', 'Item (Samaan)', 'Khata #', 'Due Amount', 'Schedule', 'Status', 'Receipt', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {rows.length > 0 ? rows.map((row, i) => {
                   const status = row.scheduleEntry?.status || 'pending'
+                  const statusLower = status.toLowerCase().trim();
+                  const isPaid = statusLower === 'paid';
+                  const isMissed = statusLower === 'missed';
+                  
                   return (
-                    <tr key={i} className={`${status === 'missed' ? 'bg-red-50' : status === 'paid' ? 'bg-emerald-50/40' : 'bg-white'} hover:bg-slate-50 transition-colors`}>
+                    <tr key={i} className={`${isMissed ? 'bg-red-50/20' : isPaid ? 'bg-emerald-50/10' : 'bg-white'} hover:bg-slate-50 transition-colors`}>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">{row.customer?.fullName || '—'}</div>
-                        <div className="text-xs text-slate-400">{row.customer?.phone}</div>
+                        <div className="font-bold text-slate-900">{row.customer?.fullName || '—'}</div>
+                        <div className="text-xs text-slate-400 font-medium">{row.customer?.phone}</div>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{row.brand} {row.model}</td>
-                      <td className="px-4 py-3 font-mono text-slate-700">{row.khataNumber || '—'}</td>
+                      <td className="px-4 py-3 text-slate-700 font-medium">
+                        <div className="flex items-center gap-2">
+                          {getItemIcon(row.category)}
+                          <span>{getItemDisplayName(row)}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-slate-600 font-bold">{row.khataNumber || '—'}</td>
                       <td className="px-4 py-3 font-bold text-slate-900">{formatCurrency(row.perInstallmentAmount)}</td>
-                      <td className="px-4 py-3 text-slate-500 capitalize text-xs">{row.scheduleType}</td>
+                      <td className="px-4 py-3 text-slate-500 capitalize text-xs font-medium">{row.scheduleType}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                          status === 'paid' ? 'bg-emerald-100 text-emerald-700'
-                          : status === 'missed' ? 'bg-red-100 text-red-700'
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+                          isPaid ? 'bg-emerald-100 text-emerald-700'
+                          : isMissed ? 'bg-red-100 text-red-700'
                           : 'bg-amber-100 text-amber-700'
                         }`}>
-                          {status === 'paid' ? '✅ Paid' : status === 'missed' ? '❌ Missed' : '🟡 Pending'}
+                          {isPaid ? '✅ Paid' : isMissed ? '❌ Missed' : '🟡 Pending'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {status !== 'paid' && (
-                          <button onClick={() => markStatus(row.scheduleEntry?._id, row._id, 'paid')}
-                            className="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 mr-1 font-medium">
+                        {isPaid ? (
+                          <ReceiptButton
+                            paymentId={row.scheduleEntry?.paymentId || row.scheduleEntry?._id}
+                            paymentStatus={status}
+                            receiptNumber={row.scheduleEntry?.receiptNumber || 'RCP'}
+                            variant="icon"
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {!isPaid && (
+                          <button onClick={() => handleOpenCollectModal(row)}
+                            className="px-3 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200 transition-all mr-1.5 active:scale-95">
                             ✅ Paise Mil Gaye
                           </button>
                         )}
                         {status === 'pending' && (
                           <button onClick={() => markStatus(row.scheduleEntry?._id, row._id, 'missed')}
-                            className="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium">
+                            className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg border border-red-200 transition-all active:scale-95">
                             ❌ Nahi Diye
                           </button>
                         )}
@@ -504,7 +545,7 @@ function VasooliSection() {
                     </tr>
                   )
                 }) : (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400 font-medium">
                     <CheckCircle2 size={36} className="mx-auto mb-2 text-emerald-300" />
                     Is waqt koi qist due nahi hai! 🎉
                   </td></tr>
@@ -514,6 +555,21 @@ function VasooliSection() {
           </div>
         )}
       </div>
+
+      <CollectPaymentModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setSelectedCustomer(null)
+          setPreSelectedInstallmentId(null)
+        }}
+        customer={selectedCustomer}
+        preSelectedInstallmentId={preSelectedInstallmentId}
+        currentUser={currentUser}
+        onPaymentSuccess={() => {
+          load(activeTab)
+        }}
+      />
     </div>
   )
 }

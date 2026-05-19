@@ -79,6 +79,5 @@ customerSchema.pre(/^find/, function(next) {
 // Indexes for super fast search and phone matches
 customerSchema.index({ fullName: 'text' });
 customerSchema.index({ phone: 1 });
-customerSchema.index({ cnic: 1 }, { sparse: true, unique: true });
 
 export default mongoose.model('Customer', customerSchema);

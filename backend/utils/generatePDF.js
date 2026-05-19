@@ -3,11 +3,8 @@ import puppeteer from 'puppeteer';
 const getBrowser = async () => {
   const isProd = process.env.NODE_ENV === 'production';
   
-  return await puppeteer.launch({
+  const options = {
     headless: 'new',
-    executablePath: isProd
-      ? process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
-      : puppeteer.executablePath(),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -19,7 +16,31 @@ const getBrowser = async () => {
       '--disable-gpu',
     ],
     timeout: 30000,
-  });
+  };
+
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    options.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  } else if (isProd && process.platform !== 'win32') {
+    options.executablePath = '/usr/bin/chromium-browser';
+  } else {
+    try {
+      options.executablePath = puppeteer.executablePath();
+    } catch (e) {
+      // Ignored - fallback will handle it
+    }
+  }
+
+  try {
+    return await puppeteer.launch(options);
+  } catch (err) {
+    console.warn('Primary puppeteer launch failed, attempting to launch with local Chrome channel...', err.message);
+    // Fallback: try launching with the user's installed Google Chrome
+    return await puppeteer.launch({
+      ...options,
+      channel: 'chrome',
+      executablePath: undefined, // Let Puppeteer find system Chrome
+    });
+  }
 };
 
 const generatePDF = async (htmlContent) => {
@@ -29,13 +50,16 @@ const generatePDF = async (htmlContent) => {
     const page = await browser.newPage();
     
     const fullHTML = `<!DOCTYPE html>
-<html lang="ur" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap');
-    * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    body { background:#fff; font-family:'Times New Roman',serif; color:#1a1a6e; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#fff; font-family:'Times New Roman',serif; color:#000; direction: ltr !important; }
+    .urdu { font-family:'Noto Nastaliq Urdu',serif; direction:rtl; unicode-bidi:isolate; display:inline-block; line-height:2.2; }
+    .urdu-block { font-family:'Noto Nastaliq Urdu',serif; direction:rtl; unicode-bidi:isolate; display:block; text-align:right; line-height:2.2; }
+    .english { direction:ltr; unicode-bidi:isolate; display:inline-block; font-family:'Times New Roman',serif; }
     .u  { font-family:'Noto Nastaliq Urdu',serif; direction:rtl; line-height:2.6; }
     .uh { font-family:'Noto Nastaliq Urdu',serif; direction:rtl; line-height:2.0; font-weight:700; }
     .en { font-family:'Times New Roman',serif; direction:ltr; unicode-bidi:isolate; display:inline-block; font-weight:700; }

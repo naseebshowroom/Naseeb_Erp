@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import generatePDF from '../utils/generatePDF.js';
 import {
   electronicsAgreementHTML,
@@ -8,9 +9,12 @@ import {
   cashSaleReceiptHTML,
   customerStatementHTML,
   distributorLetterHTML,
+  paymentReceiptHTML,
 } from '../utils/documentTemplates.js';
 import Installment from '../models/Installment.js';
 import Distributor from '../models/Distributor.js';
+import Payment from '../models/Payment.js';
+import ShopSettings from '../models/ShopSettings.js';
 import { protect } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -37,7 +41,7 @@ const buildData = (installment) => {
     perInstallmentAmount: Math.round(installment.perInstallmentAmount || 0),
     totalInstallments:   installment.totalInstallments || '—',
     scheduleDay:         SCHEDULE_DAYS[installment.scheduleType] ?? 30,
-    itemName:            `${installment.brand || ''} ${installment.model || ''}`.trim(),
+    itemName:            (installment.category === 'other' ? (installment.customItemName || installment.customCategory || 'Other Samaan') : `${installment.brand || ''} ${installment.model || ''}`).trim(),
     brand:               installment.brand            || '',
     model:               installment.model            || '',
     color:               installment.color            || '',
@@ -112,6 +116,7 @@ router.post('/sale-receipt', protect, async (req, res) => {
     if (!installmentId) return res.status(400).json({ message: 'installmentId required' });
     const inst = await fetchInstallment(installmentId);
     if (!inst) return res.status(404).json({ message: 'Not found' });
+    const settings = await ShopSettings.findOne();
     const customer = inst.customer || {};
     const cashPrice = Math.round(inst.installmentPrice || 0);
     const registrationFee = Math.round(inst.registrationFee || 0);
@@ -127,6 +132,8 @@ router.post('/sale-receipt', protect, async (req, res) => {
       receivedCash: Math.round(inst.advanceAmount || 0),
       pendingCash: Math.round(inst.remainingAmount || 0),
       totalRupees: cashPrice,
+      receiptBrands: settings?.receiptBrands || 'Honda / Super Power / Unique / Impress / Express / Galaxy / United',
+      receiptColors: settings?.receiptColors || 'Red / Black / Selvar / Blue',
     };
     const pdf = await generatePDF(saleReceiptHTML(data));
     sendPDF(res, pdf, `Sale-Receipt-${customer.fullName}-${Date.now()}.pdf`);
@@ -217,5 +224,75 @@ router.post('/distributor-letter', protect, async (req, res) => {
     sendPDF(res, pdf, `Distributor-${letterType}-${distributor.name}-${Date.now()}.pdf`);
   } catch (err) { res.status(500).json({ message: 'PDF failed', error: err.message }); }
 });
+
+const handleReceiptPDF = async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const payment = await Payment.findById(paymentId)
+      .populate('collectedBy', 'name fullName')
+      .populate('customer', 'fullName phone cnic address')
+      .populate('installment');
+
+    if (!payment) return res.status(404).json({ message: 'Payment record not found' });
+
+    // Retrieve due date from installment's schedule if available
+    let dueDate = payment.dueDate;
+    if (!dueDate && payment.installment && payment.scheduleEntryId) {
+      const entry = payment.installment.paymentSchedule.id(payment.scheduleEntryId);
+      if (entry) dueDate = entry.dueDate;
+    }
+
+    const receiptData = {
+      receiptNumber: payment.receiptNumber || '—',
+      date: new Date(payment.paidDate || payment.createdAt || new Date()).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      }),
+      
+      // Always try snapshot first, then populated refs
+      customerName: payment.customerName 
+        || payment.customer?.fullName 
+        || 'N/A',
+      customerPhone: payment.customerPhone 
+        || payment.customer?.phone 
+        || 'N/A',
+      customerCnic: payment.customer?.cnic 
+        || 'N/A',
+      khataNumber: payment.khataNumber 
+        || payment.installment?.khataNumber 
+        || 'N/A',
+      itemDescription: payment.itemDescription 
+        || [
+          payment.installment?.brand,
+          payment.installment?.model,
+          payment.installment?.color,
+          payment.installment?.customCategory
+        ].filter(Boolean).join(' ')
+        || 'N/A',
+      totalPrice: Number(payment.totalPrice || payment.installment?.installmentPrice || 0),
+      remainingBalance: payment.remainingAfterPayment !== undefined ? payment.remainingAfterPayment : (payment.installment?.remainingAmount || 0),
+      dueDate: dueDate,
+      
+      paidAmount: payment.amount || 0,
+      expectedAmount: payment.expectedAmount || payment.installment?.perInstallmentAmount || payment.amount || 0,
+      shortfall: payment.shortfall !== undefined ? payment.shortfall : (payment.installment && payment.installment.perInstallmentAmount ? Math.max(0, payment.installment.perInstallmentAmount - payment.amount) : 0),
+      paymentStatus: payment.status || 'paid',
+      collectedBy: payment.collectedBy?.fullName || payment.collectedBy?.name || 'Owner',
+      note: payment.notes || '',
+      category: payment.category || payment.installment?.category || 'other',
+      isElectronics: ['mobile', 'ac', 'tv', 'lcd', 'washing_machine', 'fridge'].includes(
+        payment.category || payment.installment?.category || 'other'
+      ),
+    };
+
+    const pdf = await generatePDF(paymentReceiptHTML(receiptData));
+    sendPDF(res, pdf, `Receipt-${payment.receiptNumber}-${Date.now()}.pdf`);
+  } catch (err) { 
+    console.error('PDF Receipt Generation Error:', err);
+    res.status(500).json({ message: 'PDF failed', error: err.message }); 
+  }
+};
+
+router.post('/receipt/:paymentId', protect, handleReceiptPDF);
+router.get('/receipt/:paymentId', protect, handleReceiptPDF);
 
 export default router;

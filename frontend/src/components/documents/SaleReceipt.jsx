@@ -1,14 +1,49 @@
 import React from 'react';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import { numberToWords } from '@/utils/numberToWords';
+import { useSettingsStore } from '@/store/settingsStore';
 
 const SaleReceipt = ({ installment, customer }) => {
   if (!installment || !customer) return null;
+
+  const { settings } = useSettingsStore();
+  const receiptBrands = settings?.receiptBrands || 'Honda / Super Power / Unique / Impress / Express / Galaxy / United';
+  const receiptColors = settings?.receiptColors || 'Red / Black / Selvar / Blue';
 
   const date = formatDate(new Date());
   const receiptNumber = installment.receiptNumber || '—';
   const totalAmount = installment.installmentPrice + (installment.registrationFee || 0);
   const totalAmountInWords = numberToWords(totalAmount);
+
+  const brandOpts = receiptBrands.split(/[,\/]+/).map(b => b.trim()).filter(Boolean);
+  const brandDisplay = brandOpts.map((b, idx) => {
+    const isSelected = b.toLowerCase() === (installment.brand || '').toLowerCase();
+    return (
+      <React.Fragment key={idx}>
+        {idx > 0 && ' \u00A0/\u00A0 '}
+        {isSelected ? (
+          <strong style={{ textDecoration: 'underline', fontSize: '15px' }}>{b}</strong>
+        ) : (
+          b
+        )}
+      </React.Fragment>
+    );
+  });
+
+  const colorOpts = receiptColors.split(/[,\/]+/).map(c => c.trim()).filter(Boolean);
+  const colorDisplay = colorOpts.map((c, idx) => {
+    const isSelected = c.toLowerCase() === (installment.color || '').toLowerCase();
+    return (
+      <React.Fragment key={idx}>
+        {idx > 0 && ' \u00A0/\u00A0 '}
+        {isSelected ? (
+          <strong style={{ textDecoration: 'underline', fontSize: '14px' }}>{c}</strong>
+        ) : (
+          c
+        )}
+      </React.Fragment>
+    );
+  });
 
   const watermarkText = "NASEEB \u00A0\u00A0 NASEEB \u00A0\u00A0 NASEEB \u00A0\u00A0 NASEEB \u00A0\u00A0 NASEEB \u00A0\u00A0 NASEEB";
 
@@ -83,13 +118,13 @@ const SaleReceipt = ({ installment, customer }) => {
       </div>
 
       <div style={{ fontStyle: 'italic', fontWeight: '700', fontSize: '13px', textAlign: 'center', borderTop: '1px solid #ddd', borderBottom: '1px solid #ddd', padding: '6px 0', margin: '8px 0' }}>
-        Honda / Super Power / Unique / Impress / Express / Galaxy / United
+        {brandDisplay}
       </div>
 
       {/* PRODUCT DETAILS */}
       <div style={{ display: 'flex', gap: '16px', margin: '6px 0', fontWeight: '700', fontSize: '13px' }}>
         <span>Model: <span style={{ borderBottom: '1px solid #333', display: 'inline-block', minWidth: '200px' }}>&nbsp;{installment.brand} {installment.model}</span></span>
-        <span>Colour: &nbsp; <span style={{ fontStyle: 'italic' }}>{installment.color || '—'}</span></span>
+        <span>Colour: &nbsp; <span style={{ fontStyle: 'normal' }}>{colorDisplay}</span></span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', margin: '10px 0' }}>

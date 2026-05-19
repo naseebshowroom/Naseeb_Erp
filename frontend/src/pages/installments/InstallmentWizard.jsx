@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ChevronRight, ChevronLeft, Check, AlertTriangle, Info, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '@/lib/axios'
 import { formatCurrency } from '@/lib/utils'
+import { formatCNIC, formatPhone } from '@/utils/formatters'
 
 const STEPS = ['Customer', 'Product', 'Schedule', 'Review']
 
@@ -11,6 +12,55 @@ const INVESTOR_OPTIONS = ['Owner', 'Partner-Brother', 'Partner-1', 'Partner-2', 
 const CATEGORIES = ['motorcycle', 'car', 'mobile', 'ac', 'lcd', 'fridge', 'washing_machine', 'other']
 const SCHEDULE_TYPES = ['daily', 'weekly', '5-day', '10-day', 'monthly']
 const ASSET_STATUSES = ['In-Use', 'Returned', 'Resold-to-Other']
+
+// Form context to pass form & set safely without losing focus
+const FormContext = createContext(null)
+
+const Input = ({ label, field, type = 'text', placeholder, required, hint }) => {
+  const ctx = useContext(FormContext)
+  if (!ctx) return null
+  const { form, set } = ctx
+
+  const handleChange = (e) => {
+    let val = e.target.value
+    // Auto format if it's a CNIC field
+    if (field === 'cnic' || field.endsWith('Cnic') || field === 'g1_cnic' || field === 'g2_cnic') {
+      val = formatCNIC(val)
+    }
+    // Auto format if it's a Phone field
+    else if (field === 'phone' || field.endsWith('Phone') || field === 'g1_phone' || field === 'g2_phone' || field === 'resoldToPhone') {
+      val = formatPhone(val)
+    }
+    set(field, val)
+  }
+
+  return (
+    <div className="space-y-1">
+      <label className="text-sm font-medium text-slate-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+      <input type={type} value={form[field] || ''} onChange={handleChange}
+        placeholder={placeholder} required={required}
+        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+      {hint && <p className="text-xs text-slate-400">{hint}</p>}
+    </div>
+  )
+}
+
+const Select = ({ label, field, options, required }) => {
+  const ctx = useContext(FormContext)
+  if (!ctx) return null
+  const { form, set } = ctx
+  return (
+    <div className="space-y-1">
+      <label className="text-sm font-medium text-slate-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+      <select value={form[field] || ''} onChange={e => set(field, e.target.value)}
+        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        {options.map(o => typeof o === 'string'
+          ? <option key={o} value={o}>{o}</option>
+          : <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  )
+}
 
 const INIT = {
   // Customer
@@ -21,7 +71,7 @@ const INIT = {
   // Guarantor 2
   g2_name: '', g2_fatherName: '', g2_phone: '', g2_cnic: '', g2_relation: '', g2_relationUrdu: '', g2_workDepartment: '', g2_businessAddress: '',
   // Product
-  category: 'motorcycle', customCategory: '', brand: '', model: '', color: '',
+  category: 'motorcycle', customCategory: '', customItemName: '', brand: '', model: '', color: '',
   engineNumber: '', chassisNumber: '', serialNumber: '', condition: 'new',
   distributor: '', purchasePrice: '', installmentPrice: '',
   isCashSale: false, registrationFee: '',
@@ -38,8 +88,11 @@ const INIT = {
 
 export default function InstallmentWizard() {
   const navigate = useNavigate()
+  const { id } = useParams()
+  const isEditing = Boolean(id)
   const [step, setStep]         = useState(0)
   const [form, setForm]         = useState(INIT)
+  const [loading, setLoading]   = useState(isEditing)
   const [saving, setSaving]     = useState(false)
   const [distributors, setDistributors] = useState([])
   const [activeGuarantorAccordion, setActiveGuarantorAccordion] = useState(null) // 'g1', 'g2', or null
@@ -51,6 +104,165 @@ export default function InstallmentWizard() {
   useEffect(() => {
     api.get('/distributors').then(r => setDistributors(r.data.data || [])).catch(() => {})
   }, [])
+
+  // Load existing data if editing
+  useEffect(() => {
+    if (!isEditing) return
+    const load = async () => {
+      try {
+        setLoading(true)
+        const res = await api.get(`/installments/${id}`)
+        const d = res.data.data
+        if (d) {
+          const cust = d.customer || {}
+          const g1 = cust.guarantors?.[0] || {}
+          const g2 = cust.guarantors?.[1] || {}
+
+          setForm({
+            // Customer
+            fullName: cust.fullName || '',
+            fatherName: cust.fatherName || '',
+            cnic: cust.cnic || '',
+            phone: cust.phone || '',
+            city: cust.city || '',
+            address: cust.address || '',
+            khataNumber: d.khataNumber || cust.khataNumber || '',
+            investorName: d.investorName || 'Owner',
+
+            // Guarantor 1
+            g1_name: g1.fullName || '',
+            g1_fatherName: g1.fatherName || '',
+            g1_phone: g1.phone || '',
+            g1_cnic: g1.cnic || '',
+            g1_relation: g1.relation || '',
+            g1_relationUrdu: g1.relationUrdu || '',
+            g1_workDepartment: g1.workDepartment || '',
+            g1_businessAddress: g1.businessAddress || '',
+
+            // Guarantor 2
+            g2_name: g2.fullName || '',
+            g2_fatherName: g2.fatherName || '',
+            g2_phone: g2.phone || '',
+            g2_cnic: g2.cnic || '',
+            g2_relation: g2.relation || '',
+            g2_relationUrdu: g2.relationUrdu || '',
+            g2_workDepartment: g2.workDepartment || '',
+            g2_businessAddress: g2.businessAddress || '',
+
+            // Product
+            category: d.category || 'motorcycle',
+            customCategory: d.customCategory || '',
+            customItemName: d.customItemName || '',
+            brand: d.brand || '',
+            model: d.model || '',
+            color: d.color || '',
+            engineNumber: d.engineNumber || '',
+            chassisNumber: d.chassisNumber || '',
+            serialNumber: d.serialNumber || '',
+            condition: d.condition || 'new',
+            distributor: d.distributor?._id || d.distributor || '',
+            purchasePrice: String(d.purchasePrice || ''),
+            installmentPrice: String(d.installmentPrice || ''),
+            isCashSale: d.isCashSale || false,
+            registrationFee: String(d.registrationFee || ''),
+            assetStatus: d.assetStatus || 'In-Use',
+            resoldToName: d.resoldToName || '',
+            resoldToPhone: d.resoldToPhone || '',
+
+            // asset lifecycle
+            assetId: d.assetId || '',
+            assetConflictNote: d.assetConflictNote || '',
+
+            // Schedule
+            advanceAmount: String(d.advanceAmount || ''),
+            noAdvance: d.advanceAmount === 0,
+            perInstallmentAmount: String(d.perInstallmentAmount || ''),
+            totalInstallments: String(d.totalInstallments || ''),
+            openEnded: !d.totalInstallments,
+            scheduleType: d.scheduleType || 'monthly',
+            startDate: d.startDate ? new Date(d.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+
+            // Notes
+            notes: d.notes || ''
+          })
+        }
+      } catch (err) {
+        toast.error('Khaata details load karne mein masla hua')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [id, isEditing])
+
+  // Auto-calculate totalInstallments and update form state
+  useEffect(() => {
+    const price = Number(form.installmentPrice) || 0;
+    const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
+    const remainingAmount = price - advance;
+    const perInst = Number(form.perInstallmentAmount) || 0;
+    if (remainingAmount > 0 && perInst > 0) {
+      const calculatedTotal = Math.ceil(remainingAmount / perInst);
+      if (form.totalInstallments !== String(calculatedTotal)) {
+        setForm(p => ({ ...p, totalInstallments: String(calculatedTotal) }));
+      }
+    } else {
+      if (form.totalInstallments !== '') {
+        setForm(p => ({ ...p, totalInstallments: '' }));
+      }
+    }
+  }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount, form.totalInstallments]);
+
+  const getLocalSchedulePreview = () => {
+    const price = Number(form.installmentPrice) || 0;
+    const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
+    const remainingAmount = price - advance;
+    const perInst = Number(form.perInstallmentAmount) || 0;
+
+    if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) return [];
+
+    const schedule = [];
+    const currentDate = new Date(form.startDate);
+    currentDate.setHours(0, 0, 0, 0);
+
+    const count = Math.ceil(remainingAmount / perInst);
+    let balanceTracker = remainingAmount;
+
+    for (let i = 0; i < count; i++) {
+      const dueDate = new Date(currentDate);
+      const expectedAmount = balanceTracker >= perInst ? perInst : balanceTracker;
+
+      schedule.push({
+        qistNo: i + 1,
+        dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        expectedAmount,
+      });
+
+      balanceTracker -= expectedAmount;
+
+      switch (form.scheduleType) {
+        case 'daily':
+          currentDate.setDate(currentDate.getDate() + 1);
+          break;
+        case 'weekly':
+          currentDate.setDate(currentDate.getDate() + 7);
+          break;
+        case '5-day':
+        case '5day':
+          currentDate.setDate(currentDate.getDate() + 5);
+          break;
+        case '10-day':
+        case '10day':
+          currentDate.setDate(currentDate.getDate() + 10);
+          break;
+        case 'monthly':
+        default:
+          currentDate.setMonth(currentDate.getMonth() + 1);
+          break;
+      }
+    }
+    return schedule;
+  };
 
   const set = (field, val) => setForm(p => ({ ...p, [field]: val }))
 
@@ -97,6 +309,10 @@ export default function InstallmentWizard() {
   }
 
   const submit = async () => {
+    if (form.category === 'other' && !form.customItemName.trim()) {
+      toast.error('Other category ke liye samaan ka naam (customItemName) likhna zaroori hai!')
+      return
+    }
     setSaving(true)
     try {
       const payload = {
@@ -107,7 +323,7 @@ export default function InstallmentWizard() {
           khataNumber: form.khataNumber,
           guarantors: [
             {
-              name: form.g1_name,
+              fullName: form.g1_name,
               fatherName: form.g1_fatherName,
               phone: form.g1_phone,
               cnic: form.g1_cnic,
@@ -117,7 +333,7 @@ export default function InstallmentWizard() {
               businessAddress: form.g1_businessAddress
             },
             {
-              name: form.g2_name,
+              fullName: form.g2_name,
               fatherName: form.g2_fatherName,
               phone: form.g2_phone,
               cnic: form.g2_cnic,
@@ -126,13 +342,16 @@ export default function InstallmentWizard() {
               workDepartment: form.g2_workDepartment,
               businessAddress: form.g2_businessAddress
             }
-          ].filter(g => g.name && g.phone)
+          ].filter(g => g.fullName && g.phone)
         },
         khataNumber:      form.khataNumber,
         investorName:     form.investorName,
         category:         form.category,
         customCategory:   form.customCategory,
-        brand: form.brand, model: form.model, color: form.color,
+        customItemName:   form.category === 'other' ? form.customItemName : undefined,
+        brand: form.category === 'other' ? '' : form.brand, 
+        model: form.category === 'other' ? '' : form.model, 
+        color: form.color,
         engineNumber: form.engineNumber, chassisNumber: form.chassisNumber,
         serialNumber: form.serialNumber, condition: form.condition,
         distributor: form.distributor || undefined,
@@ -151,35 +370,21 @@ export default function InstallmentWizard() {
         startDate:        form.isCashSale ? undefined : form.startDate,
         notes:            form.notes,
       }
-      const r = await api.post('/installments', payload)
-      toast.success('Installment successfully bana di!')
-      navigate(`/installments/${r.data.data._id}`)
+      let r;
+      if (isEditing) {
+        r = await api.put(`/installments/${id}`, payload)
+        toast.success('Installment successfully update kar di!')
+      } else {
+        r = await api.post('/installments', payload)
+        toast.success('Installment successfully bana di!')
+      }
+      navigate(`/installments/${r.data.data._id || id}`)
     } catch (e) {
       toast.error(e.response?.data?.message || 'Error')
     } finally { setSaving(false) }
   }
 
-  const Input = ({ label, field, type = 'text', placeholder, required, hint }) => (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
-      <input type={type} value={form[field]} onChange={e => set(field, e.target.value)}
-        placeholder={placeholder} required={required}
-        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-      {hint && <p className="text-xs text-slate-400">{hint}</p>}
-    </div>
-  )
 
-  const Select = ({ label, field, options, required }) => (
-    <div className="space-y-1">
-      <label className="text-sm font-medium text-slate-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
-      <select value={form[field]} onChange={e => set(field, e.target.value)}
-        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20">
-        {options.map(o => typeof o === 'string'
-          ? <option key={o} value={o}>{o}</option>
-          : <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </div>
-  )
 
   // ── Step 0: Customer ─────────────────────────────────────────────────────────
   const StepCustomer = () => (
@@ -284,9 +489,22 @@ export default function InstallmentWizard() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select label="Category (Qisam)" field="category" options={CATEGORIES} required />
-        {form.category === 'other' && <Input label="Custom Category" field="customCategory" placeholder="Fan, Speaker, etc." />}
-        <Input label="Brand (Kumpani)" field="brand" placeholder="Honda, Samsung, etc." />
-        <Input label="Model" field="model" placeholder="CD70, Galaxy S23, etc." />
+        {form.category === 'other' && <Input label="Custom Category (Qisam ka Naam)" field="customCategory" placeholder="Fan, Speaker, etc." />}
+        
+        {form.category === 'other' ? (
+          <Input 
+            label="Samaan ka Naam (e.g., Orient Fan, Sony Speaker) *" 
+            field="customItemName" 
+            placeholder="Orient Fan..." 
+            required 
+          />
+        ) : (
+          <>
+            <Input label="Brand (Kumpani)" field="brand" placeholder="Honda, Samsung, etc." />
+            <Input label="Model" field="model" placeholder="CD70, Galaxy S23, etc." />
+          </>
+        )}
+        
         <Input label="Color (Rang)" field="color" placeholder="Red, Black, White..." />
         <Select label="Condition (Haalat)" field="condition" options={[{value:'new',label:'New'},{value:'used',label:'Used'}]} />
       </div>
@@ -367,55 +585,71 @@ export default function InstallmentWizard() {
   )
 
   // ── Step 2: Schedule ─────────────────────────────────────────────────────────
-  const StepSchedule = () => (
-    <div className="space-y-4">
-      <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
-        <Info size={15} className="mt-0.5 flex-shrink-0" />
-        Qist ki scheule banayein. Agar total number nahi pata, "Open-Ended" chunein.
-      </div>
-      {/* No Advance toggle */}
-      <div
-        onClick={() => { set('noAdvance', !form.noAdvance); if (!form.noAdvance) set('advanceAmount', '0') }}
-        className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 text-sm ${form.noAdvance ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.noAdvance ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
-          {form.noAdvance && <Check size={10} className="text-white" />}
-        </div>
-        <span className="font-medium text-slate-800">No Advance Given (Koi Peshgi Nahi)</span>
-      </div>
-      {!form.noAdvance && (
-        <Input label="Advance Amount (Peshgi Raqam) (Rs.)" field="advanceAmount" type="number" placeholder="10000" hint="If no advance, tick 'No Advance Given' above" />
-      )}
+  const StepSchedule = () => {
+    const localSchedule = getLocalSchedulePreview();
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input label="Per Installment Amount / Qist (Rs.)" field="perInstallmentAmount" type="number" required placeholder="5000" hint="Enter manually — not auto-calculated" />
-        <Select label="Schedule Type (Qist ki Qisam)" field="scheduleType" options={SCHEDULE_TYPES} />
-        <Input label="Start Date (Shuru ki Tariikh)" field="startDate" type="date" />
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700">Total Installments (Kul Qistain)</label>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => set('openEnded', !form.openEnded)}>
-              <div className={`w-9 h-5 rounded-full flex items-center transition-colors px-0.5 ${form.openEnded ? 'bg-purple-500 justify-end' : 'bg-slate-200 justify-start'}`}>
-                <div className="w-4 h-4 rounded-full bg-white shadow" />
-              </div>
-              <span className="text-xs text-slate-500">Open-Ended</span>
+    return (
+      <div className="space-y-4">
+        <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
+          <Info size={15} className="mt-0.5 flex-shrink-0" />
+          Khaata qist ki schedule details. Peshgi aur har qist ki raqam daalney par duration khud-ba-khud calculate ho jaye gi.
+        </div>
+        {/* No Advance toggle */}
+        <div
+          onClick={() => { set('noAdvance', !form.noAdvance); if (!form.noAdvance) set('advanceAmount', '0') }}
+          className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 text-sm ${form.noAdvance ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.noAdvance ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
+            {form.noAdvance && <Check size={10} className="text-white" />}
+          </div>
+          <span className="font-medium text-slate-800">No Advance Given (Koi Peshgi Nahi)</span>
+        </div>
+        {!form.noAdvance && (
+          <Input label="Advance Amount (Peshgi Raqam) (Rs.)" field="advanceAmount" type="number" placeholder="10000" hint="If no advance, tick 'No Advance Given' above" />
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input label="Per Installment Amount / Qist (Rs.)" field="perInstallmentAmount" type="number" required placeholder="5000" hint="Enter per-installment amount" />
+          <Select label="Schedule Type (Qist ki Qisam)" field="scheduleType" options={SCHEDULE_TYPES} />
+          <Input label="Start Date (Shuru ki Tariikh)" field="startDate" type="date" />
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Calculated Duration (Kul Qistain)</label>
+            <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 h-[38px] flex items-center">
+              {localSchedule.length > 0 ? `${localSchedule.length} Payments / Qistain` : 'Enter prices above to calculate'}
             </div>
           </div>
-          {!form.openEnded
-            ? <input type="number" value={form.totalInstallments} onChange={e => set('totalInstallments', e.target.value)}
-                placeholder="e.g. 12" className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none" />
-            : <div className="px-3 py-2 bg-purple-50 border border-purple-100 rounded-xl text-xs text-purple-700 font-medium">Open-ended — no fixed total</div>
-          }
         </div>
-      </div>
 
-      {form.perInstallmentAmount && !form.openEnded && form.totalInstallments && (
-        <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-sm text-slate-600">
-          💡 Estimated Total: <b className="text-slate-900">{formatCurrency(Number(form.perInstallmentAmount) * Number(form.totalInstallments))}</b>
-          {' '}over {form.totalInstallments} installments
-        </div>
-      )}
-    </div>
-  )
+        {localSchedule.length > 0 && (
+          <div className="mt-6 space-y-3 pt-6 border-t border-slate-100">
+            <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">🗓️ Payment Schedule Preview</h4>
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden max-h-[300px] overflow-y-auto erp-scrollbar">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-100/80 border-b border-slate-200 sticky top-0 backdrop-blur-md">
+                    <th className="px-4 py-2.5 font-semibold text-slate-700">Qist No.</th>
+                    <th className="px-4 py-2.5 font-semibold text-slate-700">Tareekh / Due Date</th>
+                    <th className="px-4 py-2.5 font-semibold text-slate-700 text-right">Rakam / Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {localSchedule.map((item) => (
+                    <tr key={item.qistNo} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-2 font-medium text-slate-900">Qist {item.qistNo}</td>
+                      <td className="px-4 py-2 text-slate-600">{item.dueDate}</td>
+                      <td className="px-4 py-2 text-slate-900 font-bold text-right">{formatCurrency(item.expectedAmount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 font-medium">
+              💡 Dynamic duration calculated perfectly! Remaining Balance: <b>{formatCurrency(Number(form.installmentPrice || 0) - (form.noAdvance ? 0 : Number(form.advanceAmount || 0)))}</b>.
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // ── Step 3: Review ───────────────────────────────────────────────────────────
   const StepReview = () => {
@@ -470,59 +704,75 @@ export default function InstallmentWizard() {
   const visibleStepLabels = form.isCashSale ? ['Customer', 'Product', 'Review'] : STEPS
   const CurrentStep = STEP_COMPONENTS[step]
 
-  return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-black text-slate-900">New Installment / Naya Khaata</h1>
-          <p className="text-sm text-slate-500 mt-1">Customer aur item ki poori details bharein</p>
-        </div>
-
-        {/* Step indicators */}
-        <div className="flex items-center gap-0 mb-6 overflow-x-auto">
-          {visibleStepLabels.map((label, i) => {
-            const actualStep = form.isCashSale && i === 2 ? 3 : i
-            const active = step === actualStep
-            const done   = step > actualStep
-            return (
-              <div key={label} className="flex items-center">
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${active ? 'bg-white/20' : ''}`}>
-                    {done ? <Check size={11} /> : i + 1}
-                  </span>
-                  {label}
-                </div>
-                {i < visibleStepLabels.length - 1 && <ChevronRight size={16} className="text-slate-300 mx-1 flex-shrink-0" />}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Form Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <CurrentStep />
-        </div>
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-4">
-          <button onClick={step === 0 ? () => navigate('/installments') : prev}
-            className="flex items-center gap-1.5 px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <ChevronLeft size={16} /> {step === 0 ? 'Cancel' : 'Back'}
-          </button>
-          {step < (form.isCashSale ? 2 : 3) ? (
-            <button onClick={next}
-              className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
-              Next <ChevronRight size={16} />
-            </button>
-          ) : (
-            <button onClick={submit} disabled={saving}
-              className="flex items-center gap-1.5 px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50">
-              {saving ? 'Saving...' : '✅ Submit / Jama Karein'}
-            </button>
-          )}
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center font-semibold text-slate-500 animate-pulse">
+          Khaata details load ho rahi hain, baraye meharbani intezar karein...
         </div>
       </div>
-    </div>
+    )
+  }
+
+  return (
+    <FormContext.Provider value={{ form, set }}>
+      <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <div className="max-w-3xl mx-auto">
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-black text-slate-900">
+              {isEditing ? 'Edit Installment / Khaata Tabdeeli' : 'New Installment / Naya Khaata'}
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">
+              {isEditing ? 'Khaatey ki details update karein' : 'Customer aur item ki poori details bharein'}
+            </p>
+          </div>
+
+          {/* Step indicators */}
+          <div className="flex items-center gap-0 mb-6 overflow-x-auto">
+            {visibleStepLabels.map((label, i) => {
+              const actualStep = form.isCashSale && i === 2 ? 3 : i
+              const active = step === actualStep
+              const done   = step > actualStep
+              return (
+                <div key={label} className="flex items-center">
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${active ? 'bg-white/20' : ''}`}>
+                      {done ? <Check size={11} /> : i + 1}
+                    </span>
+                    {label}
+                  </div>
+                  {i < visibleStepLabels.length - 1 && <ChevronRight size={16} className="text-slate-300 mx-1 flex-shrink-0" />}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Form Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            {CurrentStep()}
+          </div>
+
+          {/* Navigation */}
+          <div className="flex items-center justify-between mt-4">
+            <button onClick={step === 0 ? () => navigate('/installments') : prev}
+              className="flex items-center gap-1.5 px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+              <ChevronLeft size={16} /> {step === 0 ? 'Cancel' : 'Back'}
+            </button>
+            {step < (form.isCashSale ? 2 : 3) ? (
+              <button onClick={next}
+                className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                Next <ChevronRight size={16} />
+              </button>
+            ) : (
+              <button onClick={submit} disabled={saving}
+                className="flex items-center gap-1.5 px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                {saving ? 'Saving...' : '✅ Submit / Jama Karein'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </FormContext.Provider>
   )
 }

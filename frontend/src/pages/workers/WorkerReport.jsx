@@ -13,7 +13,7 @@ export default function WorkerReport() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    api.get('/workers').then(r => setWorkers(r.data.data || [])).catch(() => {})
+    api.get('/auth/users').then(r => setWorkers(r.data.data || [])).catch(() => {})
   }, [])
 
   const fetchReport = async () => {
@@ -48,7 +48,7 @@ export default function WorkerReport() {
             <select value={selectedWorker} onChange={e => setSelectedWorker(e.target.value)}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20">
               <option value="">-- Worker Select Karein --</option>
-              {workers.map(w => <option key={w._id} value={w._id}>{w.name} ({w.zone})</option>)}
+              {workers.map(w => <option key={w._id} value={w._id}>{w.fullName || w.name || w.username}</option>)}
             </select>
           </div>
           <div className="space-y-1">

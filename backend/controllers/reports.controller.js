@@ -186,7 +186,7 @@ export const getOverdueReport = async (req, res) => {
       },
       {
         $addFields: {
-          overdueAmount: { $multiply: ['$overdueCount', '$perInstallmentAmount'] },
+          overdueAmount: { $multiply: ['$overdueCount', { $ifNull: ['$perInstallmentAmount', 0] }] },
           daysLate: {
             $floor: {
               $divide: [

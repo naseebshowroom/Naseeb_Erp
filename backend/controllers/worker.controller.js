@@ -1,6 +1,8 @@
 import Worker from '../models/Worker.js';
 import Installment from '../models/Installment.js';
 import Customer from '../models/Customer.js';
+import CollectionAssignment from '../models/CollectionAssignment.js';
+import mongoose from 'mongoose';
 
 // @desc    Get all workers
 // @route   GET /api/workers
@@ -73,73 +75,43 @@ export const getWorkerCollectionReport = async (req, res) => {
     const startOfDay = new Date(date.setHours(0, 0, 0, 0));
     const endOfDay = new Date(date.setHours(23, 59, 59, 999));
 
-    // Find all installment schedule entries where collectedBy = workerId and dueDate = date
-    const results = await Installment.aggregate([
-      {
-        $match: {
-          isDeleted: false,
-          isCashSale: { $ne: true },
+    // Find all assignments for this worker on this day
+    const assignments = await CollectionAssignment.find({
+      worker: workerId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    }).populate('customer').populate('installment');
+
+    const paid = [];
+    const missed = [];
+    const pending = [];
+
+    for (const assoc of assignments) {
+      const row = {
+        customer: assoc.customer,
+        brand: assoc.installment?.brand || 'Item',
+        model: assoc.installment?.model || '',
+        category: assoc.installment?.category || '',
+        khataNumber: assoc.installment?.khataNumber || '',
+        perInstallmentAmount: assoc.amountDue || assoc.installment?.perInstallmentAmount || 0,
+        scheduleEntry: {
+          paidAmount: assoc.amountCollected || 0,
+          status: assoc.status === 'collected' ? 'paid' : assoc.status,
+          dueDate: assoc.date
         }
-      },
-      { $unwind: '$paymentSchedule' },
-      {
-        $match: {
-          'paymentSchedule.dueDate': { $gte: startOfDay, $lte: endOfDay },
-          'paymentSchedule.collectedBy': { $exists: true }
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'paymentSchedule.collectedBy',
-          foreignField: '_id',
-          as: 'workerInfo'
-        }
-      },
-      {
-        $project: {
-          customer: 1, brand: 1, model: 1, category: 1, khataNumber: 1,
-          perInstallmentAmount: 1, scheduleEntry: '$paymentSchedule',
-          workerInfo: { $arrayElemAt: ['$workerInfo', 0] }
-        }
+      };
+
+      if (assoc.status === 'collected') {
+        paid.push(row);
+      } else if (assoc.status === 'missed') {
+        missed.push(row);
+      } else {
+        pending.push(row);
       }
-    ]);
+    }
 
-    // Also get "pending" entries for this date (not yet collected)
-    const pendingResults = await Installment.aggregate([
-      {
-        $match: {
-          isDeleted: false,
-          isCashSale: { $ne: true },
-          status: { $nin: ['completed', 'closed-rollover'] }
-        }
-      },
-      { $unwind: '$paymentSchedule' },
-      {
-        $match: {
-          'paymentSchedule.dueDate': { $gte: startOfDay, $lte: endOfDay },
-          'paymentSchedule.status': 'pending',
-          'paymentSchedule.collectedBy': { $exists: false }
-        }
-      },
-      {
-        $project: {
-          customer: 1, brand: 1, model: 1, category: 1, khataNumber: 1,
-          perInstallmentAmount: 1, scheduleEntry: '$paymentSchedule'
-        }
-      }
-    ]);
-
-    await Customer.populate(results, { path: 'customer', select: 'fullName phone' });
-    await Customer.populate(pendingResults, { path: 'customer', select: 'fullName phone' });
-
-    const paid    = results.filter(r => r.scheduleEntry.status === 'paid');
-    const missed  = results.filter(r => r.scheduleEntry.status === 'missed');
-    const pending = pendingResults;
-
-    const totalCollected = paid.reduce((sum, r) => sum + (r.scheduleEntry.paidAmount || r.perInstallmentAmount || 0), 0);
-    const totalMissed    = missed.reduce((sum, r) => sum + (r.perInstallmentAmount || 0), 0);
-    const totalPending   = pending.reduce((sum, r) => sum + (r.perInstallmentAmount || 0), 0);
+    const totalCollected = paid.reduce((sum, r) => sum + r.scheduleEntry.paidAmount, 0);
+    const totalMissed    = missed.reduce((sum, r) => sum + r.perInstallmentAmount, 0);
+    const totalPending   = pending.reduce((sum, r) => sum + r.perInstallmentAmount, 0);
 
     res.status(200).json({
       success: true,
@@ -149,7 +121,7 @@ export const getWorkerCollectionReport = async (req, res) => {
           totalCollected,
           totalMissed,
           totalPending,
-          assignedCount: paid.length + missed.length + pending.length,
+          assignedCount: assignments.length,
           collectedCount: paid.length,
           missedCount: missed.length
         }

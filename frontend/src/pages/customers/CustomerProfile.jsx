@@ -10,14 +10,21 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import ErrorState from '@/components/ui/ErrorState';
 import api from '@/lib/axios';
+import CollectPaymentModal from '@/components/payments/CollectPaymentModal';
+import { useAuthStore } from '@/store/authStore';
 
 export default function CustomerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Payment modal state
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [payInstallmentId, setPayInstallmentId] = useState(null);
 
   const loadProfile = async () => {
     setIsLoading(true);
@@ -88,6 +95,7 @@ export default function CustomerProfile() {
   ];
 
   return (
+    <>
     <PageWrapper 
       title="Gahak Profile (Customer)" 
       breadcrumbs={[{ label: 'Customers', to: '/customers' }, { label: customer.fullName }]}
@@ -99,7 +107,7 @@ export default function CustomerProfile() {
           <Link to={`/customers/${customer._id}/edit`} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-bold rounded hover:bg-slate-200 transition-colors shadow-sm">
             <Edit size={16} /> Edit Profile
           </Link>
-          <button onClick={() => navigate(`/payments?customerId=${customer._id}`)} className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-bold rounded hover:bg-slate-800 transition-colors shadow-sm">
+          <button onClick={() => { setPayInstallmentId(null); setPayModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-bold rounded hover:bg-slate-800 transition-colors shadow-sm">
             <Plus size={16} /> Payment
           </button>
         </div>
@@ -266,7 +274,13 @@ export default function CustomerProfile() {
                         </div>
                         <div>
                           <h4 className="font-bold text-slate-900 text-base">{inst.brand} {inst.model}</h4>
-                          <p className="text-xs text-slate-500 mt-1 uppercase tracking-tighter">ID: ...{inst._id.slice(-6)}</p>
+                          {inst.khataNumber ? (
+                            <span className="inline-block mt-0.5 font-mono text-[11px] font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded tracking-widest">
+                              Khata # {inst.khataNumber}
+                            </span>
+                          ) : (
+                            <p className="text-xs text-slate-500 mt-1 uppercase tracking-tighter">ID: ...{inst._id.slice(-6)}</p>
+                          )}
                         </div>
                       </div>
                       <StatusBadge status={inst.status} />
@@ -282,9 +296,13 @@ export default function CustomerProfile() {
                       </div>
                     </div>
                     
-                    <div className="flex justify-end border-t border-slate-100 pt-3">
+                    <div className="flex justify-end border-t border-slate-100 pt-3 gap-2">
+                      <button onClick={() => { setPayInstallmentId(inst._id); setPayModalOpen(true); }}
+                        className="flex items-center gap-1 text-sm text-white font-bold bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
+                        <Wallet size={14}/> Payment Lein
+                      </button>
                       <Link to={`/installments/${inst._id}`} className="text-sm text-black font-bold hover:text-blue-700 flex items-center gap-1">
-                        View Full Details <ChevronRight size={16} />
+                        View Details <ChevronRight size={16} />
                       </Link>
                     </div>
                   </div>
@@ -383,5 +401,15 @@ export default function CustomerProfile() {
         </div>
       </div>
     </PageWrapper>
+
+      <CollectPaymentModal
+        isOpen={payModalOpen}
+        onClose={() => { setPayModalOpen(false); setPayInstallmentId(null); }}
+        customer={data}
+        preSelectedInstallmentId={payInstallmentId}
+        currentUser={currentUser}
+        onPaymentSuccess={() => loadProfile()}
+      />
+    </>
   );
 }

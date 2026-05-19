@@ -293,7 +293,7 @@ export default function CustomerWizard() {
                     <MaskedInput label="CNIC Number"    name="cnic"       placeholder="00000-0000000-0"   formatter={formatCNIC}  control={control} errors={errors} />
                     <InputField label="City"            name="city"       placeholder="e.g. Khuzdar"       {...fieldProps} />
                     <MaskedInput label="Primary Phone"  name="phone"      placeholder="0300-0000000"       formatter={formatPhone} control={control} errors={errors} />
-                    <InputField label="Alternate Phone" name="altPhone"   placeholder="Optional"           {...fieldProps} />
+                    <MaskedInput label="Alternate Phone" name="altPhone"   placeholder="Optional"          formatter={formatPhone} control={control} errors={errors} />
                     <div className="md:col-span-2">
                       <InputField label="Complete Address" name="address" placeholder="House/Street info..." as="textarea" {...fieldProps} />
                     </div>

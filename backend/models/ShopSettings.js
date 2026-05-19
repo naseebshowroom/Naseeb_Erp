@@ -13,6 +13,10 @@ const shopSettingsSchema = new mongoose.Schema({
   termsMotorcycle: { type: String },
   termsCar: { type: String },
   
+  // Custom Receipt Layout Elements
+  receiptBrands: { type: String, default: 'Honda / Super Power / Unique / Impress / Express / Galaxy / United' },
+  receiptColors: { type: String, default: 'Red / Black / Selvar / Blue' },
+  
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

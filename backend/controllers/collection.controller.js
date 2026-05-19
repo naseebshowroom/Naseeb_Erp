@@ -1,5 +1,8 @@
 import CollectionAssignment from '../models/CollectionAssignment.js';
 import Installment from '../models/Installment.js';
+import { applyBulkPayment } from './payment.controller.js';
+import Notification from '../models/Notification.js';
+import User from '../models/User.js';
 
 // @desc    Get today's collections for a worker
 // @route   GET /api/collections/today?workerId=X
@@ -41,10 +44,31 @@ export const updateCollectionStatus = async (req, res) => {
     if (notes !== undefined) collection.notes = notes;
 
     await collection.save();
+
+    // If collected, apply FIFO payment to installment
+    if (status === 'collected') {
+      const amt = Number(amountCollected) || collection.amountDue;
+      await applyBulkPayment(collection.installment, amt, req.user._id, null);
+
+      // Create system notification for all owners & managers
+      const recipients = await User.find({ role: { $in: ['owner', 'manager'] } });
+      const workerName = req.user.fullName || req.user.username;
+      
+      for (const rec of recipients) {
+        await Notification.create({
+          title: 'Naya Vasooli (New Collection)',
+          message: `${workerName} ne customer se Rs. ${amt} vasool kar liye hain.`,
+          type: 'system',
+          user: rec._id,
+          link: `/installments/${collection.installment}`
+        });
+      }
+    }
     
     res.json({ success: true, data: collection });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server Error' });
+    console.error('[updateCollectionStatus]', error);
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
   }
 };
 

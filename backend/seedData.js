@@ -19,7 +19,7 @@ const addMonths = (date, months) => {
   return d;
 };
 
-const buildSchedule = (startDate, count, type) => {
+const buildSchedule = (startDate, count, type, expectedAmount) => {
   const schedule = [];
   for (let i = 1; i <= count; i++) {
     let dueDate;
@@ -32,6 +32,7 @@ const buildSchedule = (startDate, count, type) => {
     const isPast = dueDate < new Date();
     schedule.push({
       dueDate,
+      expectedAmount,
       status: isPast ? (Math.random() > 0.15 ? 'paid' : 'missed') : 'pending',
       paidDate: isPast && Math.random() > 0.15 ? addDays(dueDate, Math.floor(Math.random() * 3)) : undefined,
     });
@@ -187,15 +188,48 @@ const seed = async () => {
     const { default: Inventory }    = await import('./models/Inventory.js');
     const { default: Installment }  = await import('./models/Installment.js');
     const { default: Payment }      = await import('./models/Payment.js');
+    const { default: Asset }        = await import('./models/Asset.js');
+    const { default: Worker }       = await import('./models/Worker.js');
+    const { default: CollectionAssignment } = await import('./models/CollectionAssignment.js');
+
+    // ── 0. Wipe existing data ────────────────────────────────────────
+    console.log('🧹  Wiping existing database records for a clean slate...');
+    await User.deleteMany({});
+    await Distributor.deleteMany({});
+    await Customer.deleteMany({});
+    await Inventory.deleteMany({});
+    await Installment.deleteMany({});
+    await Payment.deleteMany({});
+    await Asset.deleteMany({});
+    await Worker.deleteMany({});
+    await CollectionAssignment.deleteMany({});
 
     // ── 1. Owner user ────────────────────────────────────────────────
-    let owner = await User.findOne({ username: 'owner' }).select('+password');
-    if (!owner) {
-      owner = await User.create({ username: 'owner', password: 'admin123', fullName: 'Naseeb Khan (Owner)', role: 'owner', isActive: true });
-      console.log('👤  Owner created → username: owner | password: admin123');
-    } else {
-      console.log('👤  Owner already exists');
-    }
+    let owner = await User.create({ username: 'owner', password: 'admin123', fullName: 'Naseeb Khan (Owner)', role: 'owner', isActive: true });
+    console.log('👤  Owner created → username: owner | password: admin123');
+
+    const workerUser1 = await User.create({
+      username: 'worker1',
+      password: 'password123',
+      fullName: 'Ali Raza',
+      phone: '0300-1112223',
+      role: 'worker',
+      isActive: true,
+      createdBy: owner._id
+    });
+    const workerUser2 = await User.create({
+      username: 'worker2',
+      password: 'password123',
+      fullName: 'Zahid Khan',
+      phone: '0345-4445556',
+      role: 'worker',
+      isActive: true,
+      createdBy: owner._id
+    });
+
+    const worker1 = await Worker.create({ _id: workerUser1._id, name: 'Ali Raza', phone: '0300-1112223', zone: 'North Khuzdar', createdBy: owner._id });
+    const worker2 = await Worker.create({ _id: workerUser2._id, name: 'Zahid Khan', phone: '0345-4445556', zone: 'South Khuzdar', createdBy: owner._id });
+    console.log('👷  Workers seeded with User Login accounts');
 
     // ── 2. Distributors ──────────────────────────────────────────────
     const distMap = {};
@@ -238,17 +272,36 @@ const seed = async () => {
         customerName: custDoc.fullName,
       });
 
+      // Create Asset item
+      const assetTypeMap = { 'Mobile Phone': 'mobile', 'Air Conditioner': 'ac', 'Television': 'lcd', 'Washing Machine': 'washing_machine', 'Refrigerator': 'fridge' };
+      const assetCat = prod.category === 'motorcycle' ? 'motorcycle' : (assetTypeMap[prod.elecType] || 'other');
+      const asset = await Asset.create({
+        assetType: assetCat,
+        chassisNumber: prod.chassisNo,
+        engineNumber: prod.engineNo,
+        serialNumber: prod.serialNo,
+        brand: prod.company,
+        model: prod.model,
+        color: prod.color,
+        sourceDistributor: distId,
+        purchasePrice: prod.purchasePrice,
+        purchaseDate: new Date(plan.startDate.getTime() - 86400000), // 1 day before
+        currentStatus: 'on-installment',
+        currentHolder: { holderType: 'customer', customerId: custDoc._id },
+        history: [{ event: 'purchased', date: new Date(plan.startDate.getTime() - 86400000) }]
+      });
+
       // Build payment schedule
       const baseRemaining    = plan.installmentPrice - plan.advance;
       const perInstallment   = Math.round(baseRemaining / plan.totalInst);
-      const schedule         = buildSchedule(plan.startDate, plan.totalInst, plan.scheduleType);
+      const schedule         = buildSchedule(plan.startDate, plan.totalInst, plan.scheduleType, perInstallment);
       const { paidCount, totalPaid } = calcPaid(schedule, perInstallment);
       const remaining        = plan.installmentPrice - plan.advance - totalPaid;
 
       // Build installment doc fields
       const instFields = {
         customer:            custDoc._id,
-        category:            prod.category === 'motorcycle' ? 'motorcycle' : (prod.elecType === 'Mobile Phone' ? 'mobile' : prod.elecType === 'Air Conditioner' ? 'ac' : prod.elecType === 'Television' ? 'tv' : prod.elecType === 'Washing Machine' ? 'washing_machine' : prod.elecType === 'Refrigerator' ? 'fridge' : 'other'),
+        category:            assetCat,
         brand:               prod.company,
         model:               prod.model,
         color:               prod.color,
@@ -257,6 +310,7 @@ const seed = async () => {
         chassisNumber:       prod.chassisNo,
         condition:           'new',
         distributor:         distId,
+        assetId:             asset._id,
         purchasePrice:       prod.purchasePrice,
         installmentPrice:    plan.installmentPrice,
         advanceAmount:       plan.advance,
@@ -276,6 +330,26 @@ const seed = async () => {
 
       // Link inventory to installment
       await Inventory.findByIdAndUpdate(inv._id, { installment: inst._id });
+
+      // Link Asset to installment
+      asset.linkedInstallments.push(inst._id);
+      asset.history.push({ event: 'sold-installment', date: plan.startDate, installmentId: inst._id, customerId: custDoc._id });
+      await asset.save();
+      
+      // Assign collections
+      const pendingSchedule = inst.paymentSchedule.filter(s => s.status === 'pending');
+      if (pendingSchedule.length > 0) {
+        const wkr = (receiptSeq % 2 === 0) ? worker1 : worker2;
+        await CollectionAssignment.create({
+          worker: wkr._id,
+          customer: custDoc._id,
+          installment: inst._id,
+          date: pendingSchedule[0].dueDate,
+          amountDue: pendingSchedule[0].expectedAmount,
+          status: 'pending',
+          assignedBy: owner._id
+        });
+      }
 
       // Create payment records for paid entries
       const paidSchedule = schedule.filter(s => s.status === 'paid');
