@@ -413,7 +413,7 @@ function VasooliSection() {
   const { user: currentUser } = useAuthStore()
 
   const load = async (type) => {
-    setLoading(type === activeTab ? false : true) // Avoid flicker if active tab is same
+    setLoading(true)
     try {
       const r = await api.get(`/installments/due-today?type=${type}`)
       setRows(r.data.data || [])
@@ -535,8 +535,8 @@ function VasooliSection() {
                             ✅ Paise Mil Gaye
                           </button>
                         )}
-                        {status === 'pending' && (
-                          <button onClick={() => markStatus(row.scheduleEntry?._id, row._id, 'missed')}
+                        {status === 'pending' && row.scheduleEntry?._id && (
+                           <button onClick={() => markStatus(row.scheduleEntry?._id, row._id, 'missed')}
                             className="px-3 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg border border-red-200 transition-all active:scale-95">
                             ❌ Nahi Diye
                           </button>

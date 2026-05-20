@@ -5,6 +5,7 @@ import {
   User, KeyRound, LogOut, X,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import api from '@/lib/axios'
 
 // ── Live clock ───────────────────────────────────────────
 function LiveClock() {
@@ -43,8 +44,9 @@ const TYPE_COLORS = {
   stock:   'bg-amber-100 text-amber-600',
 }
 
-function NotificationPanel({ onClose }) {
-  const unreadCount = NOTIFICATIONS.filter(n => n.unread).length
+function NotificationPanel({ onClose, assetAlerts = [] }) {
+  const navigate = useNavigate()
+  const unreadCount = NOTIFICATIONS.filter(n => n.unread).length + assetAlerts.length
   return (
     <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-slate-200
       rounded-2xl shadow-xl z-50 overflow-hidden">
@@ -59,13 +61,30 @@ function NotificationPanel({ onClose }) {
           </button>
         </div>
       </div>
-      <ul className="divide-y divide-slate-50 max-h-72 overflow-y-auto">
+      <ul className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+        {/* Live asset alerts */}
+        {assetAlerts.map((alert, i) => (
+          <li key={`alert-${i}`}
+            onClick={() => { navigate(alert.actionUrl); onClose() }}
+            className="flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer bg-slate-100">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+              alert.severity === 'warning' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
+            }`}>
+              {alert.severity === 'warning' ? '⚠' : '✓'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-800 leading-snug">{alert.title}</p>
+              <p className="text-xs text-slate-500 mt-0.5 leading-snug">{alert.message}</p>
+            </div>
+            <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
+          </li>
+        ))}
+        {/* Static notifications */}
         {NOTIFICATIONS.map(n => (
           <li key={n.id}
             className={`flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer
-              ${n.unread ? 'bg-slate-100' : ''}`}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold bg-black text-white`}>
+              ${n.unread ? 'bg-slate-100' : ''}`}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold bg-black text-white">
               {n.type === 'overdue' ? '!' : n.type === 'payment' ? '₨' : '▲'}
             </div>
             <div className="flex-1 min-w-0">
@@ -77,6 +96,9 @@ function NotificationPanel({ onClose }) {
             )}
           </li>
         ))}
+        {unreadCount === 0 && (
+          <li className="px-4 py-6 text-center text-sm text-slate-400">Koi naya notification nahi</li>
+        )}
       </ul>
       <div className="px-4 py-3 border-t border-slate-100 text-center">
         <button className="text-xs text-black hover:underline font-medium">
@@ -141,12 +163,21 @@ export default function TopNavbar({ onMenuClick, pageTitle }) {
   const [notifOpen, setNotifOpen]     = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [assetAlerts, setAssetAlerts] = useState([])
   const { user } = useAuthStore()
 
   const notifRef   = useRef(null)
   const profileRef = useRef(null)
 
-  const unreadCount = NOTIFICATIONS.filter(n => n.unread).length
+  const staticUnread = NOTIFICATIONS.filter(n => n.unread).length
+  const totalBadge   = staticUnread + assetAlerts.length
+
+  // Fetch asset alerts on mount (silent fail — non-critical)
+  useEffect(() => {
+    api.get('/assets/alerts')
+      .then(r => setAssetAlerts(r.data.data || []))
+      .catch(() => {})
+  }, [])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -227,15 +258,15 @@ export default function TopNavbar({ onMenuClick, pageTitle }) {
               hover:text-slate-800 transition-colors"
           >
             <Bell size={19} strokeWidth={1.75} />
-            {unreadCount > 0 && (
+            {totalBadge > 0 && (
               <span className="absolute top-1 right-1 min-w-[16px] h-4 px-0.5
                 rounded-full bg-red-500 text-white text-[9px] font-bold
                 flex items-center justify-center leading-none">
-                {unreadCount}
+                {totalBadge}
               </span>
             )}
           </button>
-          {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} />}
+          {notifOpen && <NotificationPanel onClose={() => setNotifOpen(false)} assetAlerts={assetAlerts} />}
         </div>
 
         {/* Profile */}

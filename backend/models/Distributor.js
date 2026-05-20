@@ -31,7 +31,7 @@ const distributorSchema = new mongoose.Schema({
   category: {
     type: String,
     enum: ['motorcycle', 'electronics', 'car', 'other'],
-    default: 'other',
+    required: true,
   },
 
   // Item tracking — each unit supplied by this distributor

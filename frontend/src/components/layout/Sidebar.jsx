@@ -9,31 +9,31 @@ import {
 // ── Navigation structure ─────────────────────────────────
 const NAV_SECTIONS = [
   {
-    label: 'Main',
+    label: 'Mukhya / Main',
     items: [
-      { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/dashboard',    icon: LayoutDashboard, label: 'Dukan ka Haal' },
       { to: '/customers',    icon: Users,            label: 'Vasooli / Khata' },
-      { to: '/installments', icon: CreditCard,       label: 'Installments' },
-      { to: '/payments',     icon: Wallet,           label: 'Payments' },
+      { to: '/installments', icon: CreditCard,       label: 'Qistain / Khatey' },
+      { to: '/payments',     icon: Wallet,           label: 'Adaigiyan / Roznamcha' },
     ],
   },
   {
-    label: 'Operations',
+    label: 'Kaam Kaaj / Operations',
     items: [
-      { to: '/collections',    icon: MapPin,          label: 'Collections' },
-      { to: '/inventory',      icon: Package,         label: 'Inventory' },
-      { to: '/assets',         icon: Box,             label: 'Assets / Inventory' },
-      { to: '/distributors',   icon: Truck,           label: 'Distributors' },
-      { to: '/workers',        icon: UserCheck,       label: 'Workers' },
-      { to: '/workers/report', icon: ClipboardList,   label: 'Worker Report' },
+      { to: '/collections',    icon: MapPin,          label: 'Fieldi Vasooli' },
+      { to: '/inventory',      icon: Package,         label: 'Dukan ka Samaan' },
+      { to: '/assets',         icon: Box,             label: 'Asan / Assets' },
+      { to: '/distributors',   icon: Truck,           label: 'Maalik / Suppliers' },
+      { to: '/workers',        icon: UserCheck,       label: 'Vasooli Staff' },
+      { to: '/workers/report', icon: ClipboardList,   label: 'Staff ki Report' },
     ],
   },
   {
-    label: 'Management',
+    label: 'Intezam / Management',
     items: [
-      { to: '/reports',    icon: BarChart3, label: 'Reports' },
-      { to: '/agreements', icon: FileText,  label: 'Agreements' },
-      { to: '/settings',   icon: Settings,  label: 'Settings' },
+      { to: '/reports',    icon: BarChart3, label: 'Hisab Kitab' },
+      { to: '/agreements', icon: FileText,  label: 'Iqrarnama / Kaghzaat' },
+      { to: '/settings',   icon: Settings,  label: 'Dukan ki Setting' },
     ],
   },
 ]

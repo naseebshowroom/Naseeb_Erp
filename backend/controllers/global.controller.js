@@ -2,6 +2,7 @@ import Customer from '../models/Customer.js';
 import Installment from '../models/Installment.js';
 import Distributor from '../models/Distributor.js';
 import Notification from '../models/Notification.js';
+import Inventory from '../models/Inventory.js';
 
 // @desc    Global search across multiple entities
 // @route   GET /api/search
@@ -72,5 +73,36 @@ export const markNotificationRead = async (req, res) => {
     res.json({ success: true, data: notification });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+// @desc    Public catalog — available stock (NO AUTH)
+// @route   GET /api/global/public-stock
+// @access  Public (no token required)
+// Security: Only returns brand, model, category, color.
+// costPrice, customer data, and financial details are NEVER exposed.
+export const getPublicStock = async (req, res) => {
+  try {
+    const { category } = req.query;
+    const filter = { status: 'available' };
+    if (category) filter.category = category;
+
+    const publicStock = await Inventory.find(filter)
+      .select('company model category color elecType createdAt -_id')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Re-map 'company' → 'brand' for a clean public API
+    const items = publicStock.map(i => ({
+      brand:    i.company,
+      model:    i.model,
+      category: i.category,
+      color:    i.color || null,
+      subType:  i.elecType || null,
+      addedOn:  i.createdAt,
+    }));
+
+    res.status(200).json({ success: true, count: items.length, data: items });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };

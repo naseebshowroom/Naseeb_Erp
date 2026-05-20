@@ -22,11 +22,21 @@ const historyEntrySchema = new mongoose.Schema({
       'resold-third-party', // Customer sold to someone else (installment still active)
       'repossessed',        // Owner took back due to default
       're-issued',          // Owner gave same bike to a NEW customer
-      'written-off'         // Lost, stolen, totaled
+      'written-off',        // Lost, stolen, totaled
+      // ── Infinite chain additions ──────────────────────────
+      'issued-installment', // alias for sold-installment (new naming)
+      'issued-cash',        // alias for sold-cash (new naming)
+      'resold-3rd-party',   // First resale to 3rd party
+      'resold-nth-party',   // Any further resale (4th, 5th, ...)
+      'returned-to-owner',  // Explicit return event (new naming)
     ],
     required: true
   },
+
+  // Primary date field (existing code uses 'date')
   date: { type: Date, default: Date.now },
+  // Alias — new code writes to eventDate, old 'date' still works
+  eventDate: { type: Date, default: Date.now },
 
   // Which installment this event relates to
   installmentId: {
@@ -34,13 +44,28 @@ const historyEntrySchema = new mongoose.Schema({
     ref: 'Installment'
   },
 
-  // Who was involved
+  // Who was involved (original installment customer)
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer'
   },
-  thirdPartyName:    { type: String },
-  thirdPartyPhone:   { type: String },
+  customerName:  { type: String }, // snapshot if customerId not available
+  customerPhone: { type: String },
+
+  // Physical holder at this step
+  holderType: {
+    type: String,
+    enum: ['owner', 'customer', 'third-party'],
+  },
+
+  // Third-party details (for resold events)
+  thirdPartyName:     { type: String },
+  thirdPartyPhone:    { type: String },
+  thirdPartyAddress:  { type: String },
+  thirdPartyRelation: { type: String },
+
+  // Chain position number — 1=purchased, 2=first holder, 3=second, etc.
+  chainPosition: { type: Number, default: 1 },
 
   // Financial info at time of event
   amountAtEvent: { type: Number },
@@ -125,6 +150,9 @@ const assetSchema = new mongoose.Schema({
   // Flag if asset was issued while still marked on-installment (edge case)
   hasConflictNote: { type: Boolean, default: false },
   conflictNote:    { type: String },
+
+  // Total number of different holders this asset has had (grows with chain)
+  totalHolderCount: { type: Number, default: 1 },
 
 }, { timestamps: true });
 

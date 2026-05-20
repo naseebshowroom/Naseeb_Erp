@@ -11,6 +11,7 @@ import {
   addSuppliedItem,
   updateSuppliedItemStatus,
   deleteSuppliedItem,
+  getDistributorStockReport,
 } from '../controllers/distributor.controller.js';
 import { protect, authorizeRoles } from '../middleware/auth.middleware.js';
 
@@ -37,5 +38,8 @@ router.post('/:id/payment',                         authorizeRoles('owner'), rec
 router.post('/:id/items',                           authorizeRoles('owner'), addSuppliedItem);
 router.patch('/:id/items/:itemId/status',           authorizeRoles('owner'), updateSuppliedItemStatus);
 router.delete('/:id/items/:itemId',                 authorizeRoles('owner'), deleteSuppliedItem);
+
+// Stock report
+router.get('/:id/stock-report',                     getDistributorStockReport);
 
 export default router;

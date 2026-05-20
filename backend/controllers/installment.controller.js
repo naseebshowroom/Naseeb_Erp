@@ -523,6 +523,7 @@ export const getDueToday = async (req, res) => {
       {
         $project: {
           customer: 1, brand: 1, model: 1, category: 1, khataNumber: 1,
+          customCategory: 1, customItemName: 1, color: 1,
           perInstallmentAmount: 1, scheduleType: 1, investorName: 1,
           scheduleEntry: '$paymentSchedule'
         }
@@ -759,8 +760,7 @@ export const getInstallmentStats = async (req, res) => {
     const monthlyRecovery = await Payment.aggregate([
       { 
         $match: { 
-          paymentDate: { $gte: sixMonthsAgo },
-          status: 'paid'
+          paidDate: { $gte: sixMonthsAgo }
         } 
       },
       {
@@ -804,6 +804,7 @@ export const getInstallmentStats = async (req, res) => {
       'Jul','Aug','Sep','Oct','Nov','Dec'
     ];
 
+    // Format chart data — merge expected vs collected by month
     const chartData = monthlyRecovery.map(item => ({
       month: monthNames[item._id.month - 1],
       year: item._id.year,
@@ -814,7 +815,7 @@ export const getInstallmentStats = async (req, res) => {
       )?.totalExpected || 0,
     }));
 
-    // If chartData is empty, populate with some empty bounds so dashboard renders beautifully
+    // If chartData is empty, populate with empty bounds so dashboard renders
     if (chartData.length === 0) {
       for (let i = 5; i >= 0; i--) {
         const d = new Date();
@@ -828,10 +829,15 @@ export const getInstallmentStats = async (req, res) => {
       }
     }
 
+    // statusStats: rename _id -> status for readability (frontend uses item._id)
+    const statusStats = statusBreakdown;
+
     res.json({
       success: true,
-      statusBreakdown,
-      chartData,
+      data: {
+        statusStats,
+        monthlyRecovery: chartData,
+      }
     });
 
   } catch (error) {

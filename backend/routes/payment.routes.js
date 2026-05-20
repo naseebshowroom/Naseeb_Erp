@@ -10,6 +10,7 @@ import {
   getMonthlySummary,
   updateScheduleStatus,
   bulkPayment,
+  repairSlotStatuses,
 } from '../controllers/payment.controller.js';
 import { protect, authorizeRoles } from '../middleware/auth.middleware.js';
 
@@ -41,6 +42,9 @@ router.patch('/schedule/:scheduleId/status', updateScheduleStatus);
 
 // Bulk payment distributed via FIFO
 router.post('/bulk-payment', bulkPayment);
+
+// One-time data repair endpoint (Owner only)
+router.post('/repair-slot-statuses', authorizeRoles('owner'), repairSlotStatuses);
 
 router.route('/')
   .get(getPayments)

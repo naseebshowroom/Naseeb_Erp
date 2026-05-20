@@ -20,8 +20,7 @@ export const getDashboardStats = async (req, res) => {
     endOfDay.setHours(23, 59, 59, 999);
     
     const todaysPayments = await Payment.find({
-      paymentDate: { $gte: startOfDay, $lte: endOfDay },
-      status: 'completed'
+      paidDate: { $gte: startOfDay, $lte: endOfDay }
     });
     const collectedToday = todaysPayments.reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
@@ -69,8 +68,8 @@ export const getStockOverview = async (req, res) => {
 export const getRecentActivity = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 5;
-    const recentPayments = await Payment.find({ status: 'completed' })
-      .sort({ paymentDate: -1, createdAt: -1 })
+    const recentPayments = await Payment.find()
+      .sort({ paidDate: -1, createdAt: -1 })
       .limit(limit)
       .populate('customer', 'fullName phone')
       .populate('installment', 'brand model category');
@@ -97,16 +96,15 @@ export const getPaymentCalendar = async (req, res) => {
     const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
     const payments = await Payment.find({
-      paymentDate: { $gte: startDate, $lte: endDate },
-      status: 'completed'
+      paidDate: { $gte: startDate, $lte: endDate }
     });
 
     // Group by day
     const days = {};
     payments.forEach(payment => {
-      const day = new Date(payment.paymentDate).getDate();
+      const day = new Date(payment.paidDate).getDate();
       if (!days[day]) {
-        days[day] = { day, totalAmount: 0, count: 0, status: 'paid' }; // simplified status
+        days[day] = { day, totalAmount: 0, count: 0 };
       }
       days[day].totalAmount += payment.amount;
       days[day].count += 1;

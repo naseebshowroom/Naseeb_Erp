@@ -730,21 +730,56 @@ export const customerStatementHTML = (data) => {
     khataNumber='',date='',brand='',model='',color='',
     engineNumber='',chassisNumber='',
     installmentPrice=0,advanceAmount=0,perInstallmentAmount=0,
-    scheduleType='',investorName='',
+    scheduleType='',investorName='',remainingAmount=0,
     schedule=[],
+    paymentHistory=[],
     summary={totalPaid:0,totalMissed:0,totalPending:0,arrears:0},
   } = data;
   const f=(n)=>`Rs. ${Math.round(Number(n)||0).toLocaleString('en-PK')}`;
+  const fmtD=(d)=>d?new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—';
   const icon=(s)=>s==='paid'?'✅ Paid':s==='missed'?'❌ MISSED':'🟡 Pending';
   const clr=(s)=>s==='paid'?'#166534':s==='missed'?'#991b1b':'#92400e';
   const bg=(s)=>s==='paid'?'#f0fdf4':s==='missed'?'#fef2f2':'#fffbeb';
+
+  // Schedule rows (per-due-date view)
   const rows=schedule.map(s=>`<tr style="background:${bg(s.status)};">
-    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">${s.dueDate?new Date(s.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">${fmtD(s.dueDate)}</td>
     <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;text-align:center;">${f(s.status==='paid'?(s.paidAmount||perInstallmentAmount):perInstallmentAmount)}</td>
-    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;font-weight:700;color:${clr(s.status)};">${icon(s.status)}${s.status==='paid'&&s.paidDate?' — '+new Date(s.paidDate).toLocaleDateString('en-GB'):''}</td>
+    <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;text-align:center;font-weight:700;color:${clr(s.status)};">${icon(s.status)}${s.status==='paid'&&s.paidDate?' — '+fmtD(s.paidDate):''}</td>
     <td style="padding:6px 10px;border:1px solid #ddd;font-size:11px;color:#555;">${s.collectedBy?.name||''}</td>
   </tr>`).join('');
-  const missedRows=schedule.filter(s=>s.status==='missed').map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:4px 0;direction:ltr;"><span style="font-size:12px;color:#991b1b;font-weight:700;">❌ ${new Date(s.dueDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span><span style="font-size:12px;font-weight:700;">${f(perInstallmentAmount)}</span></div>`).join('');
+
+  const missedRows=schedule.filter(s=>s.status==='missed').map(s=>`<div style="display:flex;justify-content:space-between;border-bottom:1px dotted #ddd;padding:4px 0;direction:ltr;"><span style="font-size:12px;color:#991b1b;font-weight:700;">❌ ${fmtD(s.dueDate)}</span><span style="font-size:12px;font-weight:700;">${f(perInstallmentAmount)}</span></div>`).join('');
+
+  // Group actual payments by date — shows "on this date, paid Rs. X at once (N qistain)"
+  const payGroups = {};
+  paymentHistory.forEach(p => {
+    const dayKey = p.paidDate
+      ? new Date(p.paidDate).toLocaleDateString('en-CA') // YYYY-MM-DD for sorting
+      : 'unknown';
+    if (!payGroups[dayKey]) payGroups[dayKey] = [];
+    payGroups[dayKey].push(p);
+  });
+
+  const payRows = Object.entries(payGroups)
+    .sort(([a],[b]) => new Date(a) - new Date(b))
+    .map(([dayKey, pmts]) => {
+      const totalForDay = pmts.reduce((s,p) => s + (p.amount||0), 0);
+      const qistCount   = pmts.length;
+      const isBulk      = qistCount > 1;
+      const collector   = pmts[0]?.collectedBy?.fullName || pmts[0]?.collectedBy?.name || 'Owner';
+      const receipts    = pmts.map(p => p.receiptNumber).filter(Boolean).join(', ');
+      const bulkLabel   = isBulk
+        ? `<span style="background:#2563eb;color:#fff;font-size:10px;font-weight:900;padding:2px 7px;border-radius:12px;">⚡ ${qistCount} qistain aik saath</span>`
+        : `<span style="color:#888;font-size:11px;">1 qist</span>`;
+      return `<tr style="background:${isBulk?'#eff6ff':'#f0fdf4'};">
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:12px;font-weight:700;">${fmtD(pmts[0]?.paidDate)}</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:14px;font-weight:900;color:#166534;">${f(totalForDay)}</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;">${bulkLabel}</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:10px;color:#555;">${receipts||'—'}</td>
+        <td style="padding:7px 10px;border:1px solid #ddd;font-size:11px;color:#555;">${collector}</td>
+      </tr>`;
+    }).join('');
 
   return `
   <div style="font-family:'Times New Roman',serif;color:#111;padding:20px;font-size:13px;direction:ltr;">
@@ -789,10 +824,11 @@ export const customerStatementHTML = (data) => {
       </div>
     </div>
 
-    <div style="background:#f0f0ff;border:1.5px solid #1a1a6e;padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0;direction:ltr;">
+    <div style="background:#f0f0ff;border:1.5px solid #1a1a6e;padding:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0;direction:ltr;">
       <div><div style="font-size:11px;color:#555;">Total Price</div><div style="font-size:16px;font-weight:900;color:#1a1a6e;">${f(installmentPrice)}</div></div>
       <div><div style="font-size:11px;color:#555;">Advance</div><div style="font-size:15px;font-weight:700;">${advanceAmount>0?f(advanceAmount):'No Advance'}</div></div>
       <div><div style="font-size:11px;color:#555;">Per Qist</div><div style="font-size:15px;font-weight:700;">${f(perInstallmentAmount)} (${scheduleType})</div></div>
+      <div><div style="font-size:11px;color:#dc2626;">Baqaya</div><div style="font-size:15px;font-weight:900;color:#dc2626;">${f(remainingAmount)}</div></div>
     </div>
 
     <div class="stmt-sec">Summary</div>
@@ -803,18 +839,34 @@ export const customerStatementHTML = (data) => {
       <div class="stmt-card"><div style="font-size:11px;color:#dc2626;">Arrears</div><div class="v" style="color:#dc2626;">${f(summary.arrears)}</div></div>
     </div>
 
-    <div class="stmt-sec">Payment History</div>
+    <div class="stmt-sec">Payment Schedule (Qist Dates)</div>
     <table class="stmt-table">
       <thead>
         <tr>
-          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Date</th>
-          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;text-align:center;">Amount</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Due Date</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;text-align:center;">Expected</th>
           <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Status</th>
           <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Collected By</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
+
+    ${paymentHistory.length > 0 ? `
+    <div class="stmt-sec" style="margin-top:20px;">Adaigiyon Ka Record / Payments Received</div>
+    <table class="stmt-table">
+      <thead>
+        <tr>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Date (Tareekh)</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Amount Paid (Rakam)</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Qistain</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Receipt(s)</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;font-size:12px;">Collector</th>
+        </tr>
+      </thead>
+      <tbody>${payRows}</tbody>
+    </table>
+    ` : ''}
 
     ${missedRows?`<div class="stmt-arr"><div style="font-weight:900;color:#dc2626;font-size:13px;margin-bottom:8px;">BAQAYA TAREEKHAIN (MISSED DATES)</div>${missedRows}<div style="margin-top:8px;padding-top:8px;border-top:1px solid #dc2626;font-weight:900;color:#dc2626;">Total Baqaya: ${f(summary.arrears)}</div></div>`:''}
 
@@ -824,6 +876,7 @@ export const customerStatementHTML = (data) => {
     </div>
   </div>`;
 };
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 7. DISTRIBUTOR LETTER (Return / Purchase Confirmation)

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, ChevronLeft, Check, AlertTriangle, Info, Search } from 'lucide-react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { ChevronRight, ChevronLeft, Check, AlertTriangle, Info, Search, User, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '@/lib/axios'
 import { formatCurrency } from '@/lib/utils'
@@ -88,15 +88,23 @@ const INIT = {
 
 export default function InstallmentWizard() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams()
   const isEditing = Boolean(id)
+
+  // Detect if we're adding a new plan for an existing customer
+  const searchParams = new URLSearchParams(location.search)
+  const prefilledCustomerId = searchParams.get('customerId')
+  const isAddingForExistingCustomer = Boolean(prefilledCustomerId) && !isEditing
+
   const [step, setStep]         = useState(0)
   const [form, setForm]         = useState(INIT)
   const [loading, setLoading]   = useState(isEditing)
   const [saving, setSaving]     = useState(false)
   const [distributors, setDistributors] = useState([])
-  const [activeGuarantorAccordion, setActiveGuarantorAccordion] = useState(null) // 'g1', 'g2', or null
-  
+  const [activeGuarantorAccordion, setActiveGuarantorAccordion] = useState(null)
+  const [prefilledCustomer, setPrefilledCustomer] = useState(null) // locked customer info banner
+
   // Chassis detection state
   const [chassisSearch, setChassisSearch] = useState({ loading: false, found: null, conflict: false })
   const chassisTimer = useRef(null)
@@ -104,6 +112,55 @@ export default function InstallmentWizard() {
   useEffect(() => {
     api.get('/distributors').then(r => setDistributors(r.data.data || [])).catch(() => {})
   }, [])
+
+  // When coming from a customer profile (Add New Plan), pre-fill customer data and skip to Step 1
+  useEffect(() => {
+    if (!isAddingForExistingCustomer) return
+    const loadCustomer = async () => {
+      try {
+        setLoading(true)
+        const res = await api.get(`/customers/${prefilledCustomerId}`)
+        const cust = res.data.data
+        if (!cust) return
+        const g1 = cust.guarantors?.[0] || {}
+        const g2 = cust.guarantors?.[1] || {}
+        setPrefilledCustomer(cust)
+        setForm(prev => ({
+          ...prev,
+          fullName:    cust.fullName    || '',
+          fatherName:  cust.fatherName  || '',
+          cnic:        cust.cnic        || '',
+          phone:       cust.phone       || '',
+          city:        cust.city        || '',
+          address:     cust.address     || '',
+          khataNumber: cust.khataNumber || '',
+          g1_name:         g1.fullName        || '',
+          g1_fatherName:   g1.fatherName      || '',
+          g1_phone:        g1.phone           || '',
+          g1_cnic:         g1.cnic            || '',
+          g1_relation:     g1.relation        || '',
+          g1_relationUrdu: g1.relationUrdu    || '',
+          g1_workDepartment:  g1.workDepartment  || '',
+          g1_businessAddress: g1.businessAddress || '',
+          g2_name:         g2.fullName        || '',
+          g2_fatherName:   g2.fatherName      || '',
+          g2_phone:        g2.phone           || '',
+          g2_cnic:         g2.cnic            || '',
+          g2_relation:     g2.relation        || '',
+          g2_relationUrdu: g2.relationUrdu    || '',
+          g2_workDepartment:  g2.workDepartment  || '',
+          g2_businessAddress: g2.businessAddress || '',
+        }))
+        // Jump directly to Product step — customer details already known
+        setStep(1)
+      } catch {
+        toast.error('Customer details load karne mein masla hua')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadCustomer()
+  }, [prefilledCustomerId, isAddingForExistingCustomer])
 
   // Load existing data if editing
   useEffect(() => {
@@ -282,8 +339,24 @@ export default function InstallmentWizard() {
           setChassisSearch({ loading: false, found: null, conflict: false })
         } else {
           const asset = assets[0]
-          const conflict = asset.currentStatus === 'on-installment'
-          setChassisSearch({ loading: false, found: asset, conflict })
+          // Enrich with canIssueNow so the UI can render correctly
+          const canIssueNow = ['in-stock', 'returned', 'repossessed'].includes(asset.currentStatus)
+          const conflict = asset.currentStatus === 'on-installment' || asset.currentStatus === 'resold-other'
+          setChassisSearch({
+            loading: false,
+            found: {
+              ...asset,
+              canIssueNow,
+              statusAlert: {
+                'in-stock':       { type: 'success', message: 'Available — Issue kar sakte hain' },
+                'returned':       { type: 'success', message: 'Wapas aa gaya — Issue kar sakte hain' },
+                'repossessed':    { type: 'success', message: 'Wapas liya — Issue kar sakte hain' },
+                'on-installment': { type: 'warning', message: 'Abhi kisi customer ke paas hai' },
+                'resold-other':   { type: 'warning', message: '3rd/Nth party ke paas hai' },
+              }[asset.currentStatus] || { type: 'info', message: asset.currentStatus },
+            },
+            conflict,
+          })
         }
       } catch {
         setChassisSearch({ loading: false, found: null, conflict: false })
@@ -389,9 +462,27 @@ export default function InstallmentWizard() {
   // ── Step 0: Customer ─────────────────────────────────────────────────────────
   const StepCustomer = () => (
     <div className="space-y-6">
-      <div className="border-b border-slate-100 pb-4 mb-4">
-        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Customer Details / Grahak ki Maaloomat</h3>
-      </div>
+      {/* Locked customer banner — shown when coming from customer profile */}
+      {isAddingForExistingCustomer && prefilledCustomer ? (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0 font-black text-blue-700 text-lg">
+            {prefilledCustomer.fullName?.charAt(0)}
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-blue-900 text-sm">{prefilledCustomer.fullName}</span>
+              <Lock size={12} className="text-blue-400" />
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Auto-filled</span>
+            </div>
+            <p className="text-xs text-blue-700 mt-0.5">{prefilledCustomer.phone} · {prefilledCustomer.city}</p>
+            <p className="text-[11px] text-blue-500 mt-1">Customer ka record already maujood hai. Sirf naya product/plan add ho raha hai.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="border-b border-slate-100 pb-4 mb-4">
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Customer Details / Grahak ki Maaloomat</h3>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Full Name (Poora Naam)" field="fullName" required placeholder="e.g. Muhammad Ali" />
         <Input label="Father's Name (Walid ka Naam)" field="fatherName" required placeholder="e.g. Muhammad Hussain" />
@@ -520,35 +611,60 @@ export default function InstallmentWizard() {
                 className="w-full px-3 py-2 pr-9 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
               {chassisSearch.loading && <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-pulse" />}
             </div>
-            {/* Chassis search results */}
-            {!chassisSearch.loading && chassisSearch.found && !chassisSearch.conflict && (
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                <div className="text-sm font-bold text-blue-800">ℹ️ This chassis is in your system</div>
-                <div className="text-xs text-blue-600 mt-1">{chassisSearch.found.brand} {chassisSearch.found.model} — {chassisSearch.found.color}</div>
-                <div className="text-xs text-blue-500">Status: {chassisSearch.found.currentStatus}</div>
-                {!form.assetId && (
-                  <button onClick={useExistingAsset}
-                    className="mt-2 px-3 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                    ✓ Use This Existing Asset Record
-                  </button>
-                )}
-                {form.assetId && <div className="mt-1 text-xs text-emerald-600 font-bold">✅ Linked to existing asset</div>}
-              </div>
-            )}
-            {!chassisSearch.loading && chassisSearch.conflict && (
-              <div className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-xl">
-                <div className="text-sm font-bold text-amber-800 flex items-center gap-1.5"><AlertTriangle size={14} /> WARNING: Bike currently on installment!</div>
-                <div className="text-xs text-amber-700 mt-1">{chassisSearch.found.brand} {chassisSearch.found.model} is with another customer.</div>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => { set('chassisNumber', ''); setChassisSearch({ loading: false, found: null, conflict: false }) }}
-                    className="px-3 py-1 text-xs bg-white border border-amber-300 text-amber-700 rounded-lg font-medium">Cancel</button>
-                  <button onClick={() => { set('assetId', chassisSearch.found._id); set('assetConflictNote', 'Asset on-installment at time of creation'); setChassisSearch(p => ({ ...p, conflict: false })) }}
-                    className="px-3 py-1 text-xs bg-amber-500 text-white rounded-lg font-medium">Yes, Proceed Anyway</button>
+
+            {/* ── Enhanced chassis search results ── */}
+            {!chassisSearch.loading && chassisSearch.found && (() => {
+              const found = chassisSearch.found
+              const canIssue = found.canIssueNow || ['in-stock','returned','repossessed'].includes(found.currentStatus)
+              const alertType = found.statusAlert?.type || (canIssue ? 'success' : 'warning')
+              const isConflict = found.currentStatus === 'on-installment'
+              const isResold   = found.currentStatus === 'resold-other'
+              const borderColor = canIssue ? '#16a34a' : '#f59e0b'
+              const bg = canIssue ? '#f0fdf4' : '#fffbeb'
+              const textColor = canIssue ? '#15803d' : '#92400e'
+
+              return (
+                <div style={{ marginTop:'8px',padding:'12px 14px',borderRadius:'9px',border:`1.5px solid ${borderColor}`,background:bg }}>
+                  <div style={{ fontWeight:'700',fontSize:'13px',color:textColor }}>
+                    {alertType === 'success' ? '✅' : '⚠️'} {found.statusAlert?.message || found.currentStatus}
+                  </div>
+                  <div style={{ fontSize:'12px',color:'#374151',marginTop:'4px' }}>
+                    {found.brand} {found.model}{found.color ? ` — ${found.color}` : ''}
+                    &nbsp;|&nbsp;🔗 {found.totalHolderCount || 1} holder(s)
+                  </div>
+                  {found.currentHolder?.thirdPartyName && (
+                    <div style={{ fontSize:'12px',color:'#64748b' }}>Currently with: {found.currentHolder.thirdPartyName}</div>
+                  )}
+                  {found.currentHolder?.customerId?.fullName && (
+                    <div style={{ fontSize:'12px',color:'#64748b' }}>Currently with: {found.currentHolder.customerId.fullName}</div>
+                  )}
+
+                  {canIssue && !form.assetId && (
+                    <button onClick={useExistingAsset}
+                      style={{ marginTop:'8px',fontSize:'12px',background:'#16a34a',color:'white',border:'none',borderRadius:'5px',padding:'5px 12px',cursor:'pointer',fontWeight:'600' }}>
+                      ✓ Isi Asset Record se Link Karein
+                    </button>
+                  )}
+                  {form.assetId && <div style={{ marginTop:'6px',fontSize:'12px',color:'#16a34a',fontWeight:'700' }}>✅ Linked to existing asset record</div>}
+
+                  {(isConflict || isResold) && !form.assetId && (
+                    <div style={{ display:'flex',gap:'8px',alignItems:'center',marginTop:'8px' }}>
+                      <span style={{ fontSize:'11px',color:'#92400e' }}>Kya aap phir bhi proceed karna chahte hain?</span>
+                      <button
+                        onClick={() => { set('assetId', found._id); set('assetConflictNote', `Asset was ${found.currentStatus} at time of new installment`) }}
+                        style={{ fontSize:'11px',background:'#f59e0b',color:'white',border:'none',borderRadius:'4px',padding:'4px 10px',cursor:'pointer',fontWeight:'600' }}>
+                        Haan, Proceed Karein
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )
+            })()}
+
             {!chassisSearch.loading && form.chassisNumber && form.chassisNumber.length >= 4 && !chassisSearch.found && (
-              <div className="mt-1 text-xs text-emerald-600">✅ New asset — not in system</div>
+              <div style={{ marginTop:'6px',padding:'8px 12px',borderRadius:'7px',border:'1px solid #16a34a',background:'#f0fdf4',fontSize:'12px',color:'#15803d',fontWeight:'600' }}>
+                🆕 Naya Asset — System mein nahi hai. Automatically register hoga.
+              </div>
             )}
           </div>
           <Input label="Engine # (Engine Nambur)" field="engineNumber" placeholder="Enter engine number" />
@@ -721,10 +837,16 @@ export default function InstallmentWizard() {
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-2xl font-black text-slate-900">
-              {isEditing ? 'Edit Installment / Khaata Tabdeeli' : 'New Installment / Naya Khaata'}
+              {isEditing ? 'Edit Installment / Khaata Tabdeeli'
+                : isAddingForExistingCustomer && prefilledCustomer
+                  ? `Naya Plan — ${prefilledCustomer.fullName}`
+                  : 'New Installment / Naya Khaata'}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              {isEditing ? 'Khaatey ki details update karein' : 'Customer aur item ki poori details bharein'}
+              {isEditing ? 'Khaatey ki details update karein'
+                : isAddingForExistingCustomer
+                  ? 'Sirf naye product ka data daalen — customer pehle se maujood hai'
+                  : 'Customer aur item ki poori details bharein'}
             </p>
           </div>
 

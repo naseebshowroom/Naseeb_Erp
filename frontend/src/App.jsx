@@ -4,6 +4,7 @@ import MainLayout from '@/components/layout/MainLayout';
 
 // Pages
 import LoginPage from '@/pages/auth/LoginPage';
+import PublicCatalog from '@/pages/public/PublicCatalog';
 import DashboardPage from '@/pages/dashboard/DashboardPage';
 import CustomersPage from '@/pages/customers/CustomersPage';
 import CustomerWizard from '@/pages/customers/CustomerWizard';
@@ -48,7 +49,10 @@ function App() {
     <>
       <Toaster position="top-right" />
       <Routes>
-        {/* Public Route */}
+        {/* Public Catalog — No login required */}
+        <Route path="/" element={<PublicCatalog />} />
+
+        {/* Auth Route */}
         <Route path="/login" element={<LoginPage />} />
 
         {/* Worker Only Route */}

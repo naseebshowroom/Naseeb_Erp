@@ -1,5 +1,6 @@
 import Distributor from '../models/Distributor.js';
 import DistributorOutstanding from '../models/DistributorOutstanding.js';
+import Inventory from '../models/Inventory.js';
 
 // ─── GET ALL ─────────────────────────────────────────────────
 export const getDistributors = async (req, res) => {
@@ -20,14 +21,26 @@ export const getDistributors = async (req, res) => {
     const enriched = await Promise.all(distributors.map(async (d) => {
       const outstanding = await DistributorOutstanding.aggregate([
         { $match: { distributor: d._id } },
-        { $group: { _id: null, totalBalance: { $sum: '$balance' }, totalSupplied: { $sum: '$totalAmount' }, totalPaid: { $sum: '$amountPaid' } } }
+        {
+          $addFields: {
+            liveBalance: { $max: [{ $subtract: ['$totalAmount', '$amountPaid'] }, 0] },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalBalance:  { $sum: '$liveBalance' },
+            totalSupplied: { $sum: '$totalAmount' },
+            totalPaid:     { $sum: '$amountPaid' },
+          },
+        },
       ]);
       const fin = outstanding[0] || { totalBalance: 0, totalSupplied: 0, totalPaid: 0 };
       return {
         ...d,
-        balance:        fin.totalBalance,
-        totalSupplied:  fin.totalSupplied,
-        totalPaid:      fin.totalPaid,
+        balance:       fin.totalBalance,
+        totalSupplied: fin.totalSupplied,
+        totalPaid:     fin.totalPaid,
       };
     }));
 
@@ -41,9 +54,30 @@ export const getDistributors = async (req, res) => {
 export const getDistributorStats = async (req, res) => {
   try {
     const totalDistributors = await Distributor.countDocuments();
+
+    // Get all valid distributor IDs to avoid orphaned outstanding records
+    // (records from deleted/replaced distributors that inflate the totals)
+    const validDistributorIds = await Distributor.distinct('_id');
+
+    // Only aggregate outstanding records linked to currently existing distributors
     const balanceSummary = await DistributorOutstanding.aggregate([
-      { $group: { _id: null, totalOwed: { $sum: '$balance' }, totalSupplied: { $sum: '$totalAmount' } } }
+      {
+        $match: { distributor: { $in: validDistributorIds } },
+      },
+      {
+        $addFields: {
+          liveBalance: { $max: [{ $subtract: ['$totalAmount', '$amountPaid'] }, 0] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalOwed:     { $sum: '$liveBalance' },
+          totalSupplied: { $sum: '$totalAmount' },
+        },
+      },
     ]);
+
     const { totalOwed = 0, totalSupplied = 0 } = balanceSummary[0] || {};
     res.status(200).json({ success: true, data: { totalDistributors, totalOwed, totalSupplied } });
   } catch (error) {
@@ -239,8 +273,40 @@ export const deleteDistributor = async (req, res) => {
   try {
     const distributor = await Distributor.findByIdAndDelete(req.params.id);
     if (!distributor) return res.status(404).json({ success: false, message: 'Distributor not found' });
+
+    // Cascade-delete all outstanding invoice records for this distributor.
+    // Without this, orphaned records stay in the DB and inflate the summary card totals.
+    await DistributorOutstanding.deleteMany({ distributor: req.params.id });
+
     res.status(200).json({ success: true, message: 'Distributor deleted successfully' });
   } catch (error) {
     res.status(400).json({ success: false, message: 'Error deleting distributor', error: error.message });
+  }
+};
+// ─── DISTRIBUTOR STOCK REPORT ────────────────────────────────
+// Returns per-status breakdown of all inventory items linked to this distributor
+export const getDistributorStockReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const stockItems = await Inventory.find({ distributor: id })
+      .select('company model category color status purchaseType purchasePrice engineNo chassisNo serialNo createdAt')
+      .lean();
+
+    const stats = {
+      totalItemsBought:   stockItems.length,
+      availableInShop:    stockItems.filter(i => i.status === 'available').length,
+      soldOnCash:         stockItems.filter(i => i.status === 'sold_cash').length,
+      onInstallment:      stockItems.filter(i => i.status === 'on_installment').length,
+      activeInMarket:     stockItems.filter(i => i.status === 'market_installment').length,
+      returnedItems:      stockItems.filter(i => i.status === 'returned_to_supplier').length,
+      cashPurchases:      stockItems.filter(i => i.purchaseType === 'cash').length,
+      creditPurchases:    stockItems.filter(i => i.purchaseType === 'credit').length,
+      totalPurchaseValue: stockItems.reduce((sum, i) => sum + (i.purchasePrice || 0), 0),
+    };
+
+    res.status(200).json({ success: true, stats, items: stockItems });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -66,30 +66,37 @@ export const recordPayment = async (req, res) => {
     }
 
     // 3. Determine actual paid amount vs expected
+    //    CRITICAL: paidAmount on the slot is CUMULATIVE (sum of all split payments).
+    //    We must ADD to the existing paidAmount, not overwrite it.
     const expected = scheduleEntry.expectedAmount;
-    const actualPaid = Number(paidAmount) || 0;
-    
+    const newPayment = Number(paidAmount) || 0;
+    const previouslyPaid = scheduleEntry.paidAmount || 0;          // already on the slot
+    const cumulativePaid = previouslyPaid + newPayment;             // total after this payment
+
     let paymentStatus = 'pending';
     let shortfall = 0;
 
-    if (actualPaid >= expected) {
+    if (cumulativePaid >= expected) {
       paymentStatus = 'paid';
       shortfall = 0;
-    } else if (actualPaid > 0 && actualPaid < expected) {
+    } else if (cumulativePaid > 0 && cumulativePaid < expected) {
       paymentStatus = 'partially_paid';
-      shortfall = expected - actualPaid;
+      shortfall = expected - cumulativePaid;
     } else {
       paymentStatus = 'missed';
       shortfall = expected;
     }
 
-    // 4. Update schedule entry fields
+    // 4. Update schedule entry fields (paidAmount = CUMULATIVE total)
     scheduleEntry.status = paymentStatus;
-    scheduleEntry.paidAmount = actualPaid;
+    scheduleEntry.paidAmount = cumulativePaid;                      // ✅ accumulate, not overwrite
     scheduleEntry.shortfallAmount = shortfall;
     scheduleEntry.collectedBy = collectedBy || req.user?._id || req.user?.id;
     scheduleEntry.paidDate = paidDate || new Date();
     if (notes) scheduleEntry.note = notes;
+
+    // Also use the new payment amount (not cumulative) for the Payment audit doc below
+    const actualPaid = newPayment;
 
     // 5. Recalculate Installment totals
     const totalPaid = installment.paymentSchedule
@@ -564,19 +571,23 @@ export const updateScheduleStatus = async (req, res) => {
     // Find the specific schedule entry
     const scheduleEntry = installment.paymentSchedule.id(scheduleId);
     const expectedAmount = scheduleEntry.expectedAmount;
-    const actualPaid = Number(paidAmount) || 0;
+    const newPayment = Number(paidAmount) || 0;
+    // CUMULATIVE: add to previously paid amount on the slot (not overwrite)
+    const previouslyPaid = scheduleEntry.paidAmount || 0;
+    const cumulativePaid = previouslyPaid + newPayment;
+    const actualPaid = newPayment; // used for the Payment audit doc
 
-    // Determine real status based on amounts
+    // Determine real status based on cumulative amounts
     let realStatus = status;
     let shortfall = 0;
 
     if (status === 'paid' || status === 'partially_paid') {
-      if (actualPaid >= expectedAmount) {
+      if (cumulativePaid >= expectedAmount) {
         realStatus = 'paid';
         shortfall = 0;
-      } else if (actualPaid > 0 && actualPaid < expectedAmount) {
+      } else if (cumulativePaid > 0 && cumulativePaid < expectedAmount) {
         realStatus = 'partially_paid';
-        shortfall = expectedAmount - actualPaid;
+        shortfall = expectedAmount - cumulativePaid;
         // Add note about shortfall
         scheduleEntry.note = note || 
           `Partial payment. Baqaya: Rs. ${shortfall}`;
@@ -586,9 +597,9 @@ export const updateScheduleStatus = async (req, res) => {
       }
     }
 
-    // Update the schedule entry
+    // Update the schedule entry (paidAmount = CUMULATIVE total)
     scheduleEntry.status = realStatus;
-    scheduleEntry.paidAmount = actualPaid;
+    scheduleEntry.paidAmount = cumulativePaid;   // ✅ accumulate, not overwrite
     scheduleEntry.shortfallAmount = shortfall;
     scheduleEntry.paidDate = paidDate || new Date();
     scheduleEntry.collectedBy = collectedBy;
@@ -854,5 +865,97 @@ export const bulkPayment = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   } finally {
     if (session) session.endSession();
+  }
+};
+
+// @desc    REPAIR: Recalculate schedule entry paidAmounts from Payment audit docs.
+//          Fixes data corrupted by the historical overwrite bug where split payments
+//          overwrote each other's paidAmount on the schedule entry.
+// @route   POST /api/payments/repair-slot-statuses
+// @access  Private (Owner only)
+export const repairSlotStatuses = async (req, res) => {
+  try {
+    // 1. Load ALL Payment documents grouped by scheduleEntryId
+    const allPayments = await Payment.find({}).lean();
+
+    // Build map: scheduleEntryId -> total amount paid
+    const slotTotals = {};
+    for (const pmt of allPayments) {
+      const key = String(pmt.scheduleEntryId);
+      if (!key || key === 'null' || key === 'undefined') continue;
+      slotTotals[key] = (slotTotals[key] || 0) + (pmt.amount || 0);
+    }
+
+    // 2. Load all active installments with their paymentSchedule
+    const installments = await Installment.find({ isDeleted: { $ne: true } });
+
+    let repaired = 0;
+    let installmentsFixed = 0;
+
+    for (const inst of installments) {
+      let changed = false;
+
+      for (const slot of inst.paymentSchedule) {
+        const key = String(slot._id);
+        const trueCumulative = slotTotals[key] || 0;
+        const expected = slot.expectedAmount || 0;
+
+        // Recalculate correct status
+        let correctStatus = slot.status;
+        let correctShortfall = slot.shortfallAmount || 0;
+
+        if (trueCumulative >= expected && expected > 0) {
+          correctStatus   = 'paid';
+          correctShortfall = 0;
+        } else if (trueCumulative > 0 && trueCumulative < expected) {
+          correctStatus   = 'partially_paid';
+          correctShortfall = expected - trueCumulative;
+        } else if (trueCumulative === 0 && slot.status !== 'pending' && slot.status !== 'missed') {
+          correctStatus   = 'pending';
+          correctShortfall = 0;
+        }
+
+        // Only update if something is wrong
+        if (slot.paidAmount !== trueCumulative || slot.status !== correctStatus || slot.shortfallAmount !== correctShortfall) {
+          slot.paidAmount      = trueCumulative;
+          slot.status          = correctStatus;
+          slot.shortfallAmount = correctShortfall;
+          changed = true;
+          repaired++;
+        }
+      }
+
+      if (changed) {
+        // Recalculate installment-level totals
+        inst.totalPaid = inst.paymentSchedule.reduce((s, e) => s + (e.paidAmount || 0), 0);
+        inst.remainingAmount = Math.max(
+          0,
+          inst.installmentPrice - (inst.advanceAmount || 0) - inst.totalPaid
+        );
+        inst.totalArrears = inst.paymentSchedule.reduce((s, e) => s + (e.shortfallAmount || 0), 0);
+        inst.installmentsPaid = inst.paymentSchedule.filter(e => e.status === 'paid').length;
+
+        if (inst.remainingAmount <= 0) {
+          inst.status = 'completed';
+        } else if (inst.paymentSchedule.filter(e => e.status === 'pending').length <= 3) {
+          inst.status = 'near_completion';
+        } else {
+          inst.status = 'active';
+        }
+
+        await inst.save();
+        installmentsFixed++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Repair complete. ${repaired} schedule slots fixed across ${installmentsFixed} installments.`,
+      repaired,
+      installmentsFixed,
+    });
+  } catch (error) {
+    console.error('[repairSlotStatuses]', error);
+    res.status(500).json({ success: false, message: 'Repair failed', error: error.message });
   }
 };

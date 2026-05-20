@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { Package, Clock, CheckCircle2, AlertTriangle, Search, Filter } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Package, Search } from 'lucide-react'
 import PageWrapper from '@/components/ui/PageWrapper'
 import api from '@/lib/axios'
-import { formatCurrency } from '@/lib/utils'
 
 const STATUS_CONFIG = {
   'in-stock':       { label: 'In Stock',        color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
@@ -13,11 +12,67 @@ const STATUS_CONFIG = {
   'written-off':    { label: 'Written Off',       color: 'bg-slate-100 text-slate-500',     dot: 'bg-slate-400' },
 }
 
+// Per-status quick action buttons — navigate to history page with ?action= param
+function RowActions({ asset }) {
+  const navigate = useNavigate()
+  const { _id, currentStatus, chassisNumber } = asset
+
+  const viewBtn = (
+    <Link to={`/assets/${_id}/history`}
+      className="px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors whitespace-nowrap">
+      View History
+    </Link>
+  )
+
+  const resoldBtn = (label = '🔄 Resold') => (
+    <button onClick={() => navigate(`/assets/${_id}/history?action=resold`)}
+      className="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors whitespace-nowrap">
+      {label}
+    </button>
+  )
+
+  const returnedBtn = (label = '⬅️ Returned') => (
+    <button onClick={() => navigate(`/assets/${_id}/history?action=returned`)}
+      className="px-2.5 py-1 text-xs font-medium bg-teal-50 text-teal-700 rounded-lg hover:bg-teal-100 transition-colors whitespace-nowrap">
+      {label}
+    </button>
+  )
+
+  const reissueBtn = (
+    <button onClick={() => navigate(`/installments/new?chassisNumber=${chassisNumber || ''}&assetId=${_id}`)}
+      className="px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors whitespace-nowrap">
+      ➕ Re-Issue
+    </button>
+  )
+
+  const issueBtn = (
+    <button onClick={() => navigate(`/installments/new?assetId=${_id}`)}
+      className="px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors whitespace-nowrap">
+      ➕ Issue
+    </button>
+  )
+
+  const actionMap = {
+    'on-installment': <>{viewBtn}{resoldBtn('🔄 Resold')}{returnedBtn('⬅️ Returned')}</>,
+    'resold-other':   <>{viewBtn}{resoldBtn('🔄 Aur Becha')}{returnedBtn('⬅️ Wapas Aaya')}</>,
+    'returned':       <>{viewBtn}{reissueBtn}</>,
+    'repossessed':    <>{viewBtn}{reissueBtn}</>,
+    'in-stock':       <>{viewBtn}{issueBtn}</>,
+    'written-off':    <>{viewBtn}</>,
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {actionMap[currentStatus] || viewBtn}
+    </div>
+  )
+}
+
 export default function AssetsPage() {
-  const [assets, setAssets]         = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [filter, setFilter]         = useState('all')
-  const [search, setSearch]         = useState('')
+  const [assets, setAssets] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
 
   const fetchAssets = async () => {
     setLoading(true)
@@ -34,18 +89,18 @@ export default function AssetsPage() {
   const filtered = assets.filter(a => {
     if (!search) return true
     const q = search.toLowerCase()
-    return (a.chassisNumber||'').toLowerCase().includes(q)
-        || (a.engineNumber||'').toLowerCase().includes(q)
-        || (a.brand||'').toLowerCase().includes(q)
-        || (a.model||'').toLowerCase().includes(q)
+    return (a.chassisNumber || '').toLowerCase().includes(q)
+        || (a.engineNumber  || '').toLowerCase().includes(q)
+        || (a.brand         || '').toLowerCase().includes(q)
+        || (a.model         || '').toLowerCase().includes(q)
   })
 
   const FILTERS = [
-    { id: 'all', label: 'All' },
-    { id: 'in-stock', label: '🟢 In Stock' },
+    { id: 'all',            label: 'All' },
+    { id: 'in-stock',       label: '🟢 In Stock' },
     { id: 'on-installment', label: '🔵 On Installment' },
-    { id: 'returned', label: '🟡 Returned' },
-    { id: 'resold-other', label: '🔴 Resold to Other' },
+    { id: 'returned',       label: '🟡 Returned' },
+    { id: 'resold-other',   label: '🔴 Resold to Other' },
   ]
 
   return (
@@ -76,8 +131,8 @@ export default function AssetsPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                 <tr>
-                  {['Item', 'Chassis #', 'Engine #', 'Color', 'Status', 'Current Holder', 'Times Issued', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left font-medium">{h}</th>
+                  {['Item', 'Chassis #', 'Engine #', 'Color', 'Status', 'Current Holder', '🔗 Chain', 'Actions'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -90,8 +145,8 @@ export default function AssetsPage() {
                         <div className="font-bold text-slate-900">{asset.brand} {asset.model}</div>
                         <div className="text-xs text-slate-400 capitalize">{asset.assetType}</div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-slate-700">{asset.chassisNumber || '—'}</td>
-                      <td className="px-4 py-3 font-mono text-slate-700">{asset.engineNumber || '—'}</td>
+                      <td className="px-4 py-3 font-mono text-slate-700 text-xs">{asset.chassisNumber || '—'}</td>
+                      <td className="px-4 py-3 font-mono text-slate-700 text-xs">{asset.engineNumber || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{asset.color || '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${cfg.color}`}>
@@ -107,15 +162,11 @@ export default function AssetsPage() {
                             : 'Owner'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">
-                          {asset.linkedInstallments?.length || 0}×
-                        </span>
+                        <div className="font-bold text-slate-700 text-xs">🔗 {asset.totalHolderCount || 1} holders</div>
+                        <div className="text-[10px] text-slate-400">{asset.linkedInstallments?.length || 0} installment(s)</div>
                       </td>
                       <td className="px-4 py-3">
-                        <Link to={`/assets/${asset._id}/history`}
-                          className="px-3 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
-                          View History
-                        </Link>
+                        <RowActions asset={asset} />
                       </td>
                     </tr>
                   )

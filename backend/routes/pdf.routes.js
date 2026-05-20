@@ -178,6 +178,12 @@ router.post('/customer-statement', protect, async (req, res) => {
     const totalMissed = schedule.filter(s=>s.status==='missed').reduce((sum,_)=>sum+perQ,0);
     const totalPending= schedule.filter(s=>s.status==='pending').reduce((sum,_)=>sum+perQ,0);
 
+    // Fetch all actual payment records (including bulk/FIFO payments) for this installment
+    const payments = await Payment.find({ installment: installmentId })
+      .populate('collectedBy', 'name fullName')
+      .sort({ paidDate: 1 })
+      .lean();
+
     const data = {
       customerName: customer.fullName || '', fatherName: customer.fatherName || '',
       cnic: customer.cnic || '', phone: customer.phone || '', address: customer.address || '',
@@ -188,7 +194,9 @@ router.post('/customer-statement', protect, async (req, res) => {
       installmentPrice: inst.installmentPrice, advanceAmount: inst.advanceAmount||0,
       perInstallmentAmount: perQ, scheduleType: inst.scheduleType||'',
       investorName: inst.investorName||'',
+      remainingAmount: inst.remainingAmount || 0,
       schedule,
+      paymentHistory: payments, // actual payment records including bulk payments
       summary: { totalPaid, totalMissed, totalPending, arrears: totalMissed },
     };
     const pdf = await generatePDF(customerStatementHTML(data));

@@ -302,25 +302,63 @@ export default function KhataTab({
             <table className="w-full text-sm text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {['Receipt #', 'Paid Date', 'Amount', 'Due Date', 'Collector', 'Receipt'].map(h => (
+                  {['Date Paid', 'Total Paid', 'Qistain Covered', 'Receipt(s)', 'Collector'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {paymentHistory.length > 0 ? paymentHistory.map((pmt) => (
-                  <tr key={pmt._id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-slate-700">{pmt.receiptNumber || '—'}</td>
-                    <td className="px-4 py-3 font-bold text-slate-800">{fmtDate(pmt.paidDate)}</td>
-                    <td className="px-4 py-3 font-black text-emerald-600">{formatCurrency(pmt.amount)}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{fmtDate(pmt.dueDate || pmt.relatedDueDate)}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{pmt.collectedBy?.name || pmt.collectedBy?.fullName || 'Owner'}</td>
-                    <td className="px-4 py-3">
-                      <ReceiptButton paymentId={pmt._id} paymentStatus="paid" receiptNumber={pmt.receiptNumber} variant="icon" />
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">Koi payment record abhi tak nahi.</td></tr>
+                {(() => {
+                  // Group payments by date (YYYY-MM-DD)
+                  const groups = {};
+                  paymentHistory.forEach(pmt => {
+                    const dayKey = pmt.paidDate
+                      ? new Date(pmt.paidDate).toLocaleDateString('en-CA') // YYYY-MM-DD
+                      : 'unknown';
+                    if (!groups[dayKey]) groups[dayKey] = [];
+                    groups[dayKey].push(pmt);
+                  });
+
+                  return Object.entries(groups)
+                    .sort(([a], [b]) => new Date(a) - new Date(b))
+                    .map(([dayKey, pmts]) => {
+                      const totalForDay = pmts.reduce((s, p) => s + (p.amount || 0), 0);
+                      const qistCount   = pmts.length;
+                      const isBulk      = qistCount > 1;
+                      const receipts    = pmts.map(p => p.receiptNumber).filter(Boolean);
+                      const collector   = pmts[0]?.collectedBy?.name || pmts[0]?.collectedBy?.fullName || 'Owner';
+                      const displayDate = fmtDate(pmts[0]?.paidDate);
+
+                      return (
+                        <tr key={dayKey} className={`transition-colors hover:bg-slate-50 ${isBulk ? 'bg-blue-50/40' : ''}`}>
+                          <td className="px-4 py-3 font-bold text-slate-800">{displayDate}</td>
+                          <td className="px-4 py-3 font-black text-emerald-600 text-base">
+                            {formatCurrency(totalForDay)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {isBulk ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                                ⚡ {qistCount} qistain aik saath
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">1 qist</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                            {receipts.length === 1
+                              ? receipts[0]
+                              : receipts.length > 1
+                                ? `${receipts[0]} +${receipts.length - 1}`
+                                : '—'
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">{collector}</td>
+                        </tr>
+                      );
+                    });
+                })()} 
+                {paymentHistory.length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400 italic font-medium">Koi payment record abhi tak nahi.</td></tr>
                 )}
               </tbody>
             </table>

@@ -31,6 +31,11 @@ export default function DistributorDetail() {
   const [supplyModalOpen, setSupplyModalOpen] = useState(false)
   const [isSupplying, setIsSupplying] = useState(false)
 
+  // Edit distributor modal
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [editForm, setEditForm] = useState({ name: '', companyName: '', phone: '', address: '', category: '' })
+
   // Granular supplied items state
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [isSavingItem, setIsSavingItem] = useState(false)
@@ -66,6 +71,34 @@ export default function DistributorDetail() {
   useEffect(() => {
     fetchDetail()
   }, [id])
+
+  // Pre-fill edit form when data loads
+  useEffect(() => {
+    if (data) {
+      setEditForm({
+        name:        data.name        || '',
+        companyName: data.companyName || '',
+        phone:       data.phone       || '',
+        address:     data.address     || '',
+        category:    data.category    || 'other',
+      })
+    }
+  }, [data])
+
+  const handleEditDistributor = async (e) => {
+    e.preventDefault()
+    setIsUpdating(true)
+    try {
+      await distributorService.updateDistributor(id, editForm)
+      toast.success('Distributor update ho gaya!')
+      setEditModalOpen(false)
+      fetchDetail()
+    } catch (err) {
+      handleApiError(err)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
 
   const handlePayment = async (e) => {
     e.preventDefault()
@@ -195,6 +228,12 @@ export default function DistributorDetail() {
       breadcrumbs={[{ label: 'Distributors', to: '/distributors' }, { label: data.name }]}
       actions={
         <div className="flex gap-2">
+          <button 
+            onClick={() => setEditModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 hover:text-black hover:border-black transition-colors shadow-sm"
+          >
+            <Edit size={16} /> Edit
+          </button>
           <button 
             onClick={() => setItemModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-bold rounded-xl hover:bg-indigo-600 hover:text-white transition-colors shadow-sm"
@@ -705,6 +744,81 @@ export default function DistributorDetail() {
         onConfirm={confirmDeleteItem}
         onCancel={() => setDeleteConfirmOpen(false)}
       />
+
+      {/* ── Edit Distributor Modal ── */}
+      {editModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-base font-bold text-slate-900">Distributor Edit Karein</h2>
+              <button onClick={() => setEditModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleEditDistributor} className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Company Name *</label>
+                <input
+                  required
+                  value={editForm.companyName}
+                  onChange={e => setEditForm({ ...editForm, companyName: e.target.value })}
+                  className={INPUT}
+                  placeholder="Company ka naam"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Contact Person *</label>
+                <input
+                  required
+                  value={editForm.name}
+                  onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                  className={INPUT}
+                  placeholder="Rabta shakhs ka naam"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Phone *</label>
+                <input
+                  required
+                  value={editForm.phone}
+                  onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
+                  className={INPUT}
+                  placeholder="0300-1234567"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Address</label>
+                <input
+                  value={editForm.address}
+                  onChange={e => setEditForm({ ...editForm, address: e.target.value })}
+                  className={INPUT}
+                  placeholder="Market, Shehar"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Category *</label>
+                <select
+                  required
+                  value={editForm.category}
+                  onChange={e => setEditForm({ ...editForm, category: e.target.value })}
+                  className={INPUT}
+                >
+                  <option value="">-- Category Chunyein --</option>
+                  <option value="motorcycle">🏍️ Motorcycle</option>
+                  <option value="electronics">📺 Electronics</option>
+                  <option value="car">🚗 Car</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={isUpdating}
+                className="w-full py-2.5 bg-black text-white font-bold rounded-xl hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                {isUpdating ? 'Saving...' : 'Update Karein'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </PageWrapper>
   )
 }
