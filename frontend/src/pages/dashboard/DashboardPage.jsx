@@ -405,10 +405,9 @@ function VasooliSection() {
   const [rows, setRows]           = useState([])
   const [loading, setLoading]     = useState(false)
 
-  // Collect modal states
-  const [modalOpen, setModalOpen] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [preSelectedInstallmentId, setPreSelectedInstallmentId] = useState(null)
+  // Collect modal states — pass full installment + scheduleEntry so modal shows correct data
+  const [isPaymentModalOpen, setIsPaymentModalOpen]   = useState(false)
+  const [selectedPaymentData, setSelectedPaymentData] = useState(null)
 
   const { user: currentUser } = useAuthStore()
 
@@ -433,10 +432,13 @@ function VasooliSection() {
     }
   }
 
+  // Set BOTH installment and scheduleEntry BEFORE opening the modal — no race condition
   const handleOpenCollectModal = (row) => {
-    setSelectedCustomer(row.customer);
-    setPreSelectedInstallmentId(row._id);
-    setModalOpen(true);
+    setSelectedPaymentData({
+      installment:   row,                  // the full installment row (has .customer, .khataNumber, etc.)
+      scheduleEntry: row.scheduleEntry,    // the specific due slot for today
+    });
+    setIsPaymentModalOpen(true);
   }
 
   const totalDue = rows.reduce((s, r) => s + (r.perInstallmentAmount || 0), 0)
@@ -445,12 +447,12 @@ function VasooliSection() {
 
   return (
     <div className="mt-8">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900">💰 Aaj Ki Vasooli (Today's Collection)</h2>
+          <h2 className="text-lg md:text-xl font-black text-slate-900">💰 Aaj Ki Vasooli (Today's Collection)</h2>
           <p className="text-sm text-slate-500 mt-0.5">Aaj ki qistain jo wasool karni hain</p>
         </div>
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-sm shrink-0">
           <div className="text-right">
             <div className="text-slate-400 font-medium">Total Due</div>
             <div className="font-black text-slate-900">{formatCurrency(totalDue)}</div>
@@ -476,12 +478,12 @@ function VasooliSection() {
         {loading ? (
           <div className="p-12 text-center text-slate-400 animate-pulse font-medium">Loading vasooli list...</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full min-w-[750px] text-sm text-left">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   {['Customer (Gahak)', 'Item (Samaan)', 'Khata #', 'Due Amount', 'Schedule', 'Status', 'Receipt', 'Actions'].map(h => (
-                    <th key={h} className="px-4 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-4 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -557,18 +559,15 @@ function VasooliSection() {
       </div>
 
       <CollectPaymentModal
-        isOpen={modalOpen}
+        isOpen={isPaymentModalOpen}
         onClose={() => {
-          setModalOpen(false)
-          setSelectedCustomer(null)
-          setPreSelectedInstallmentId(null)
+          setIsPaymentModalOpen(false)
+          setSelectedPaymentData(null)
         }}
-        customer={selectedCustomer}
-        preSelectedInstallmentId={preSelectedInstallmentId}
+        installment={selectedPaymentData?.installment}
+        scheduleEntry={selectedPaymentData?.scheduleEntry}
         currentUser={currentUser}
-        onPaymentSuccess={() => {
-          load(activeTab)
-        }}
+        onSuccess={() => load(activeTab)}
       />
     </div>
   )

@@ -23,8 +23,8 @@ export default function CustomerProfile() {
   const [error, setError] = useState(null);
 
   // Payment modal state
-  const [payModalOpen, setPayModalOpen] = useState(false);
-  const [payInstallmentId, setPayInstallmentId] = useState(null);
+  const [payModalOpen, setPayModalOpen]             = useState(false);
+  const [selectedInstallmentObj, setSelectedInstallmentObj] = useState(null);
 
   const loadProfile = async () => {
     setIsLoading(true);
@@ -107,7 +107,7 @@ export default function CustomerProfile() {
           <Link to={`/customers/${customer._id}/edit`} className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 text-sm font-bold rounded hover:bg-slate-200 transition-colors shadow-sm">
             <Edit size={16} /> Edit Profile
           </Link>
-          <button onClick={() => { setPayInstallmentId(null); setPayModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-bold rounded hover:bg-slate-800 transition-colors shadow-sm">
+          <button onClick={() => { setSelectedInstallmentObj(null); setPayModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-bold rounded hover:bg-slate-800 transition-colors shadow-sm">
             <Plus size={16} /> Payment
           </button>
         </div>
@@ -297,7 +297,11 @@ export default function CustomerProfile() {
                     </div>
                     
                     <div className="flex justify-end border-t border-slate-100 pt-3 gap-2">
-                      <button onClick={() => { setPayInstallmentId(inst._id); setPayModalOpen(true); }}
+                      <button onClick={() => {
+                          // Inject the customer object so the modal info card has fullName, phone, etc.
+                          setSelectedInstallmentObj({ ...inst, customer: data });
+                          setPayModalOpen(true);
+                        }}
                         className="flex items-center gap-1 text-sm text-white font-bold bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
                         <Wallet size={14}/> Payment Lein
                       </button>
@@ -404,11 +408,11 @@ export default function CustomerProfile() {
 
       <CollectPaymentModal
         isOpen={payModalOpen}
-        onClose={() => { setPayModalOpen(false); setPayInstallmentId(null); }}
-        customer={data}
-        preSelectedInstallmentId={payInstallmentId}
+        onClose={() => { setPayModalOpen(false); setSelectedInstallmentObj(null); }}
+        installment={selectedInstallmentObj}   // full object with .customer, .khataNumber, etc.
+        customer={selectedInstallmentObj ? null : data}  // generic mode when no specific installment
         currentUser={currentUser}
-        onPaymentSuccess={() => loadProfile()}
+        onSuccess={() => loadProfile()}
       />
     </>
   );

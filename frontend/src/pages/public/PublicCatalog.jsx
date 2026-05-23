@@ -193,7 +193,7 @@ export default function PublicCatalog() {
               key={cat.value}
               onClick={() => setActiveCategory(cat.value)}
               style={{
-                padding: '7px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                padding: '7px 14px', borderRadius: 20, cursor: 'pointer',
                 fontSize: 12, fontWeight: 700,
                 background: activeCategory === cat.value ? '#1e40af' : 'white',
                 color: activeCategory === cat.value ? 'white' : '#475569',

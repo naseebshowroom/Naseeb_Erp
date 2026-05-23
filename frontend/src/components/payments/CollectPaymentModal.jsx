@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle, AlertTriangle, TrendingUp, Zap } from 'lucide-react';
 import ProductInstallmentSelect from './ProductInstallmentSelect';
 import { recordPayment } from '../../services/paymentService';
@@ -6,9 +6,9 @@ import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
 // Payment amount options
-const OPTION_EXACT    = 'exact';    // Poori Qist
-const OPTION_CUSTOM   = 'custom';   // Custom / Partial
-const OPTION_LUMPSUM  = 'lumpsum'; // Ikattha Bada Payment (FIFO)
+const OPTION_EXACT = 'exact';    // Poori Qist
+const OPTION_CUSTOM = 'custom';   // Custom / Partial
+const OPTION_LUMPSUM = 'lumpsum'; // Ikattha Bada Payment (FIFO)
 
 const CollectPaymentModal = ({
   isOpen,
@@ -16,31 +16,77 @@ const CollectPaymentModal = ({
   customer,
   preSelectedInstallmentId = null,
   onPaymentSuccess,
+  onSuccess,          // alias used by KhataTab
   currentUser,
+  // KhataTab slot-level props:
+  installment = null,
+  scheduleEntry = null,
 }) => {
+  // Normalise success callback
+  const _onSuccess = onPaymentSuccess || onSuccess;
   const [selectedInstallment, setSelectedInstallment] = useState(null);
-  const [amountOption, setAmountOption]               = useState(OPTION_EXACT);
-  const [customAmount, setCustomAmount]               = useState('');
-  const [note, setNote]                               = useState('');
-  const [isSubmitting, setIsSubmitting]               = useState(false);
-  const [success, setSuccess]                         = useState(false);
-  const [lastReceipt, setLastReceipt]                 = useState(null);
-  const [lastFinalAmount, setLastFinalAmount]         = useState(0);
+  const [amountOption, setAmountOption] = useState(OPTION_EXACT);
+  const [customAmount, setCustomAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState(null);
+  const [lastFinalAmount, setLastFinalAmount] = useState(0);
 
   // Lump sum preview state
-  const [lumpPreview, setLumpPreview]   = useState(null);
+  const [lumpPreview, setLumpPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Auto-fill amount when modal opens.
+  // NOTE: useEffect must come BEFORE any early return — Rules of Hooks.
+  // activeScheduleEntry is derived INSIDE the effect using the prop values at that moment.
+  useEffect(() => {
+    if (isOpen) {
+      // Use explicit scheduleEntry, or fall back to next pending/missed slot in the installment
+      const resolved = scheduleEntry
+        || installment?.paymentSchedule?.find(
+            e => e.status === 'pending' || e.status === 'missed' || e.status === 'partially_paid'
+          );
+      if (resolved) {
+        const due = (resolved.expectedAmount || 0) - (resolved.paidAmount || 0);
+        setCustomAmount(String(Math.round(due > 0 ? due : resolved.expectedAmount || 0)));
+        setAmountOption(OPTION_CUSTOM);
+      }
+    }
+    if (!isOpen) {
+      setSelectedInstallment(null);
+      setCustomAmount('');
+      setNote('');
+      setSuccess(false);
+      setLastReceipt(null);
+      setLumpPreview(null);
+      setAmountOption(OPTION_EXACT);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, scheduleEntry, installment]);
+
+  // Guard: render nothing when closed — MUST be after all hooks
   if (!isOpen) return null;
+
+  // Derived customer when operating in slot mode (KhataTab)
+  const _customer = customer || installment?.customer;
+
+  // Resolve the active schedule entry: explicit prop first, then auto-find next due slot
+  const activeScheduleEntry = scheduleEntry
+    || installment?.paymentSchedule?.find(
+        e => e.status === 'pending' || e.status === 'missed' || e.status === 'partially_paid'
+      )
+    || null;
 
   const expectedAmount = selectedInstallment
     ? Math.round(selectedInstallment.perInstallmentAmount || 0)
-    : 0;
+    : Math.round(activeScheduleEntry?.expectedAmount || installment?.perInstallmentAmount || 0);
 
   const finalAmount = (() => {
-    if (!selectedInstallment) return 0;
-    if (amountOption === OPTION_EXACT)   return expectedAmount;
-    if (amountOption === OPTION_CUSTOM)  return Number(customAmount) || 0;
+    const active = selectedInstallment || installment;
+    if (!active) return 0;
+    if (amountOption === OPTION_EXACT) return expectedAmount;
+    if (amountOption === OPTION_CUSTOM) return Number(customAmount) || 0;
     if (amountOption === OPTION_LUMPSUM) return Number(customAmount) || 0;
     return 0;
   })();
@@ -103,25 +149,27 @@ const CollectPaymentModal = ({
   };
 
   const handleSubmit = async () => {
-    if (!selectedInstallment) { toast.error('Pehle product select karein'); return; }
+    // In slot-mode, installment prop replaces dropdown selection
+    const activeInstallment = selectedInstallment || installment;
+    if (!activeInstallment) { toast.error('Pehle product select karein'); return; }
     if (finalAmount <= 0) { toast.error('Amount enter karein'); return; }
 
     setIsSubmitting(true);
     try {
       let result;
 
+      const activeInstallment = selectedInstallment || installment;
       if (amountOption === OPTION_LUMPSUM) {
-        // Hit the bulk-payment FIFO endpoint
         const res = await api.post('/payments/bulk-payment', {
-          installmentId: selectedInstallment._id,
+          installmentId: activeInstallment._id,
           totalAmount: finalAmount,
           collectedBy: currentUser?._id || currentUser?.id,
         });
         result = res.data;
       } else {
-        // Standard single-slot payment
         result = await recordPayment({
-          installmentId: selectedInstallment._id,
+          installmentId: activeInstallment._id,
+          scheduleEntryId: activeScheduleEntry?._id,  // resolved slot id (explicit or auto-found)
           paidAmount: finalAmount,
           collectedBy: currentUser?._id || currentUser?.id,
           paidDate: new Date(),
@@ -134,7 +182,7 @@ const CollectPaymentModal = ({
       setLastReceipt(result.payment || result.data || null);
       toast.success(result.message || 'Adaigi kamyabi se darj ho gayi!');
 
-      if (onPaymentSuccess) onPaymentSuccess(result);
+      if (_onSuccess) _onSuccess(result);
 
     } catch (err) {
       toast.error(err.response?.data?.message || 'Payment record nahi ho saka');
@@ -162,6 +210,7 @@ const CollectPaymentModal = ({
   };
 
   const handleClose = () => {
+    // Aggressive reset to prevent stale data on next open
     setSelectedInstallment(null);
     setCustomAmount('');
     setNote('');
@@ -172,9 +221,11 @@ const CollectPaymentModal = ({
     onClose();
   };
 
+  // (useEffect moved above the early return to comply with Rules of Hooks)
+
   // Format date helper
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-  const fmtRs   = (n) => `Rs. ${(n || 0).toLocaleString('en-PK')}`;
+  const fmtRs = (n) => `Rs. ${(n || 0).toLocaleString('en-PK')}`;
 
   return (
     <div style={{
@@ -210,7 +261,7 @@ const CollectPaymentModal = ({
               💰 Payment Record Karein
             </div>
             <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
-              {customer?.fullName} — {customer?.phone}
+              {_customer?.fullName || 'N/A'} — {_customer?.phone || ''}
             </div>
           </div>
           <button onClick={handleClose} style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
@@ -266,19 +317,43 @@ const CollectPaymentModal = ({
 
             {/* STEP 1: Product Selection */}
             <div style={{ marginBottom: '18px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#374151', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                QADAM 1 — Konsa Samaan?
-              </label>
-              <ProductInstallmentSelect
-                customerId={customer?._id || customer?.id || customer}
-                selectedInstallmentId={selectedInstallment?._id || preSelectedInstallmentId}
-                onSelect={handleInstallmentSelect}
-                disabled={isSubmitting}
-              />
+              {/* If opened with a full installment object, show info card instead of dropdown */}
+              {installment ? (
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '800', color: '#15803d', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>Gahak Ki Maloomat</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                    <span style={{ color: '#64748b' }}>Gahak:</span>
+                    <strong>{installment?.customer?.fullName || 'N/A'}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                    <span style={{ color: '#64748b' }}>Khata Number:</span>
+                    <strong style={{ fontFamily: 'monospace' }}>{installment?.khataNumber || 'N/A'}</strong>
+                  </div>
+                  {/* Show next due slot — either explicit or auto-resolved */}
+                  {activeScheduleEntry && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                      <span style={{ color: '#64748b' }}>Due Amount:</span>
+                      <strong style={{ color: '#dc2626' }}>{fmtRs(activeScheduleEntry.expectedAmount || 0)}</strong>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#374151', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    QADAM 1 — Konsa Samaan?
+                  </label>
+                  <ProductInstallmentSelect
+                    customerId={_customer?._id || _customer?.id || _customer}
+                    selectedInstallmentId={selectedInstallment?._id || preSelectedInstallmentId}
+                    onSelect={handleInstallmentSelect}
+                    disabled={isSubmitting}
+                  />
+                </>
+              )}
             </div>
 
-            {/* STEP 2: Amount Option Selection */}
-            {selectedInstallment && (
+            {/* STEP 2: Amount Option Selection — show when slot-mode OR installment selected from dropdown */}
+            {(installment || selectedInstallment) && (
               <div style={{ marginBottom: '18px' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#374151', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   QADAM 2 — Kitna Payment?
@@ -439,7 +514,7 @@ const CollectPaymentModal = ({
             )}
 
             {/* Note */}
-            {selectedInstallment && amountOption !== OPTION_LUMPSUM && (
+            {(installment || selectedInstallment) && amountOption !== OPTION_LUMPSUM && (
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '6px' }}>
                   Note (Optional)
@@ -461,20 +536,20 @@ const CollectPaymentModal = ({
             {/* SUBMIT BUTTON */}
             <button
               onClick={handleSubmit}
-              disabled={!selectedInstallment || finalAmount <= 0 || isSubmitting}
+              disabled={(!selectedInstallment && !installment) || finalAmount <= 0 || isSubmitting}
               style={{
                 width: '100%', padding: '14px',
-                background: !selectedInstallment || finalAmount <= 0
+                background: ((!selectedInstallment && !installment) || finalAmount <= 0)
                   ? '#e2e8f0'
                   : amountOption === OPTION_LUMPSUM
                     ? 'linear-gradient(135deg, #7c3aed, #6d28d9)'
                     : 'linear-gradient(135deg, #16a34a, #15803d)',
-                color: !selectedInstallment || finalAmount <= 0 ? '#94a3b8' : 'white',
+                color: ((!selectedInstallment && !installment) || finalAmount <= 0) ? '#94a3b8' : 'white',
                 border: 'none', borderRadius: '12px',
                 fontSize: '15px', fontWeight: '800',
-                cursor: (!selectedInstallment || finalAmount <= 0 || isSubmitting) ? 'not-allowed' : 'pointer',
+                cursor: ((!selectedInstallment && !installment) || finalAmount <= 0 || isSubmitting) ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                boxShadow: !selectedInstallment || finalAmount <= 0 ? 'none' : '0 4px 16px rgba(22,163,74,0.3)',
+                boxShadow: ((!selectedInstallment && !installment) || finalAmount <= 0) ? 'none' : '0 4px 16px rgba(22,163,74,0.3)',
                 transition: 'all 0.2s',
               }}
             >

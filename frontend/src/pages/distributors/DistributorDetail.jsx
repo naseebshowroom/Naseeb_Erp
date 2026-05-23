@@ -323,7 +323,7 @@ export default function DistributorDetail() {
 
             <div className="overflow-x-auto">
               {activeTab === 'supply' && (
-              <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[600px] text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                   <tr>
                     <th className="px-6 py-3 text-xs uppercase tracking-wider">Tareekh</th>
@@ -366,7 +366,7 @@ export default function DistributorDetail() {
               )}
 
               {activeTab === 'items' && (
-              <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[600px] text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3 text-xs uppercase tracking-wider">Item Details</th>
@@ -441,7 +441,7 @@ export default function DistributorDetail() {
               )}
 
               {activeTab === 'payments' && (
-              <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[600px] text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                   <tr>
                     <th className="px-6 py-3 text-xs uppercase tracking-wider">Adayigi Tareekh</th>

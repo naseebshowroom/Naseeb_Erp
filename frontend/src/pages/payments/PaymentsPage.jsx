@@ -31,10 +31,9 @@ export default function PaymentsPage() {
   const [collectedData, setCollectedData] = useState([])
   const [loading, setLoading] = useState(true)
   
-  // Modal States
+  // Modal States — store the full installment object so modal shows info card correctly
   const [collectModalOpen, setCollectModalOpen] = useState(false)
-  const [selectedPayment, setSelectedPayment] = useState(null)
-  const [selectedInstallmentId, setSelectedInstallmentId] = useState(null)
+  const [selectedInstallmentObj, setSelectedInstallmentObj] = useState(null)
 
   const fetchVasooliData = async () => {
     try {
@@ -123,10 +122,9 @@ export default function PaymentsPage() {
     { id: 'collected', label: 'Aaj Ki Jama Shuda', count: filteredCollected.length },
   ]
 
-  const openCollectModal = (payment) => {
-    const cust = payment.customer || payment;
-    setSelectedPayment(cust);
-    setSelectedInstallmentId(payment._id || payment.installment?._id || null);
+  // Store the full installment row BEFORE opening — no race condition, no blank fields
+  const openCollectModal = (row) => {
+    setSelectedInstallmentObj(row);
     setCollectModalOpen(true);
   }
 
@@ -137,23 +135,23 @@ export default function PaymentsPage() {
 
     return (
       <div className="overflow-x-auto bg-white border border-slate-200 rounded-xl shadow-sm">
-        <table className="w-full text-sm text-left">
+        <table className="w-full min-w-[700px] text-sm text-left">
           <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
             <tr>
-              <th className="px-6 py-4">Gahak (Customer)</th>
-              <th className="px-6 py-4">Samaan (Product)</th>
+              <th className="px-6 py-4 whitespace-nowrap">Gahak (Customer)</th>
+              <th className="px-6 py-4 whitespace-nowrap">Samaan (Product)</th>
               {isCollectionTab ? (
                 <>
-                  <th className="px-6 py-4 text-right">Mili Hui Rakam</th>
-                  <th className="px-6 py-4">Receipt No</th>
-                  <th className="px-6 py-4">Collector</th>
-                  <th className="px-6 py-4 text-center">Receipt</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Mili Hui Rakam</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Receipt No</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Collector</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Receipt</th>
                 </>
               ) : (
                 <>
-                  <th className="px-6 py-4 text-right">Baqaya Rakam</th>
-                  <th className="px-6 py-4 text-right">Kul Vasooli Amount</th>
-                  <th className="px-6 py-4 text-center">Action</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Baqaya Rakam</th>
+                  <th className="px-6 py-4 text-right whitespace-nowrap">Kul Vasooli Amount</th>
+                  <th className="px-6 py-4 text-center whitespace-nowrap">Action</th>
                 </>
               )}
             </tr>
@@ -330,15 +328,11 @@ export default function PaymentsPage() {
         isOpen={collectModalOpen}
         onClose={() => {
           setCollectModalOpen(false)
-          setSelectedPayment(null)
-          setSelectedInstallmentId(null)
+          setSelectedInstallmentObj(null)
         }}
-        customer={selectedPayment}
-        preSelectedInstallmentId={selectedInstallmentId}
+        installment={selectedInstallmentObj}   // full obj with .customer, .khataNumber, .paymentSchedule
         currentUser={currentUser}
-        onPaymentSuccess={() => {
-          fetchVasooliData()
-        }}
+        onSuccess={() => fetchVasooliData()}
       />
     </PageWrapper>
   )

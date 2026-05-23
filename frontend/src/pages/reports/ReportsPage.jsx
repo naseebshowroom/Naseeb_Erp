@@ -71,7 +71,7 @@ function OverdueTable({ overdueData, isLoading, exportCSV }) {
         {isLoading ? (
           <div className="flex justify-center items-center h-32 text-slate-500 text-sm">Data load ho raha hai...</div>
         ) : (
-          <table className="w-full text-sm text-left">
+            <table className="w-full min-w-[600px] text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase">
               <tr>
                 <th className="px-6 py-3">#</th>
@@ -444,7 +444,7 @@ export default function ReportsPage() {
               <DollarSign size={18} className="text-black" />
               <h3 className="text-base font-bold text-slate-900">Category-Wise Munafa</h3>
             </div>
-            <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[600px] text-sm text-left">
               <thead className="bg-white text-slate-500 font-semibold border-b border-slate-100 text-xs uppercase">
                 <tr>
                   <th className="px-6 py-3">Qisam</th>

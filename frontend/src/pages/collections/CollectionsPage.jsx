@@ -347,7 +347,7 @@ export default function CollectionsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[600px] text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-xs uppercase tracking-wider">
                   <tr>
                     <th className="px-6 py-4">Gahak</th>

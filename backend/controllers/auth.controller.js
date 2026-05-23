@@ -26,8 +26,10 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide username and password' });
     }
 
+    const cleanUsername = username.trim().toLowerCase();
+
     // Check for user
-    const user = await User.findOne({ username: username.toLowerCase() }).select('+password');
+    const user = await User.findOne({ username: cleanUsername }).select('+password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }

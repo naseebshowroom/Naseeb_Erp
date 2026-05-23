@@ -156,7 +156,7 @@ export default function DistributorsPage() {
           {isLoading ? (
             <div className="bg-white"><SkeletonTable rows={5} cols={5} /></div>
           ) : (
-            <table className="w-full text-sm text-left">
+            <table className="w-full min-w-[700px] text-sm text-left">
               <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-xs uppercase tracking-wider">
                 <tr>
                   <th className="px-6 py-4">Company Tafseel</th>

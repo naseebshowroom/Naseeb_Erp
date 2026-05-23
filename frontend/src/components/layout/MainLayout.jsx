@@ -34,7 +34,7 @@ export default function MainLayout() {
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
 
       {/* ── Main content area ─────────────────────── */}
-      <div className="md:ml-64 flex flex-col min-h-screen transition-[margin] duration-300">
+      <div className="md:ml-64 flex flex-col min-h-screen min-w-0 overflow-hidden transition-[margin] duration-300">
 
         {/* ── Sticky top navbar ─────────────────── */}
         <TopNavbar
@@ -45,7 +45,7 @@ export default function MainLayout() {
         {/* ── Page content ──────────────────────── */}
         <main
           id="page-content"
-          className="flex-1 mt-16 p-4 sm:p-6"
+          className="flex-1 mt-16 p-4 md:p-6 lg:p-8"
           style={{ maxWidth: '1600px', width: '100%' }}
         >
           <Outlet />

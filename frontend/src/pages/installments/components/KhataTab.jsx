@@ -3,9 +3,11 @@ import { DollarSign, Printer, ExternalLink, X, Check, ChevronDown, ChevronRight,
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/lib/axios';
-import { recordPayment, recordBulkPayment } from '../../../services/paymentService';
+import { recordBulkPayment } from '../../../services/paymentService';
 import ReceiptButton from '../../../components/payments/ReceiptButton';
 import StatusBadge from '../../../components/shared/StatusBadge';
+import Pagination, { usePagination } from '@/components/ui/Pagination';
+import CollectPaymentModal from '../../../components/payments/CollectPaymentModal';
 
 const VIEW_DUE_DATE = 'due_date';
 const VIEW_HISTORY  = 'history';
@@ -21,13 +23,26 @@ export default function KhataTab({
   const [bulkAmount, setBulkAmount]     = useState('');
   const [bulkLoading, setBulkLoading]   = useState(false);
 
-  // Single slot modal
-  const [slotModal, setSlotModal]       = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const [slotAmount, setSlotAmount]     = useState('');
-  const [paymentMode, setPaymentMode]   = useState('cash');
-  const [notes, setNotes]               = useState('');
-  const [slotLoading, setSlotLoading]   = useState(false);
+  // CollectPaymentModal — dedicated state so data is always set BEFORE modal opens
+  const [isModalOpen, setIsModalOpen]     = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState(null);
+
+  // ── Payment History pagination ─────────────────────────────────────────────
+  // usePagination MUST be called unconditionally at the top level (Rules of Hooks).
+  // We compute the grouped array here; it will be empty until ledger loads.
+  const _paymentHistory = ledger?.paymentHistory ?? [];
+  const _historyGroups = (() => {
+    const groups = {};
+    _paymentHistory.forEach(pmt => {
+      const dayKey = pmt.paidDate
+        ? new Date(pmt.paidDate).toLocaleDateString('en-CA')
+        : 'unknown';
+      if (!groups[dayKey]) groups[dayKey] = [];
+      groups[dayKey].push(pmt);
+    });
+    return Object.entries(groups).sort(([a], [b]) => new Date(a) - new Date(b));
+  })();
+  const historyPg = usePagination(_historyGroups, 10);
 
   const toggleSlot = (slotId) => setExpandedSlots(prev => ({ ...prev, [slotId]: !prev[slotId] }));
 
@@ -58,32 +73,15 @@ export default function KhataTab({
     } finally { setBulkLoading(false); }
   };
 
+  // Open CollectPaymentModal for a specific schedule slot
   const openSlotPayModal = (slot) => {
-    setSelectedSlot(slot);
-    setSlotAmount(Math.round(slot.expectedAmount - (slot.paidAmount || 0)));
-    setPaymentMode('cash'); setNotes('');
-    setSlotModal(true);
+    setSelectedEntry(slot);   // data is set BEFORE modal opens — no race condition
+    setIsModalOpen(true);
   };
 
-  const handleSlotPaySubmit = async (e) => {
-    e.preventDefault();
-    const amountNum = parseFloat(slotAmount);
-    if (!amountNum || amountNum <= 0) { toast.error('Sahi raqam darj karein!'); return; }
-    try {
-      setSlotLoading(true);
-      const res = await recordPayment({
-        installmentId, scheduleEntryId: selectedSlot._id,
-        paidAmount: amountNum,
-        collectedBy: currentUser?._id || currentUser?.id,
-        notes, paymentMode,
-      });
-      if (res.success) {
-        toast.success(`Adaigi darj! Receipt: ${res.payment?.receiptNumber}`);
-        setSlotModal(false); fetchLedger();
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Adaigi process karne mein masla hua.');
-    } finally { setSlotLoading(false); }
+  // Called by CollectPaymentModal after a successful payment
+  const handlePaymentSuccessRefetch = () => {
+    fetchLedger();
   };
 
   const handleMarkMissed = async (slotId) => {
@@ -181,7 +179,7 @@ export default function KhataTab({
       {activeView === VIEW_DUE_DATE && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full min-w-[650px] text-sm text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   {['#', 'Due Date', 'Expected', 'Collected', 'Progress', 'Status', 'Collector', 'Receipt', 'Actions'].map(h => (
@@ -299,7 +297,7 @@ export default function KhataTab({
             <span className="ml-auto text-xs font-bold text-slate-400">{paymentHistory.length} transactions</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full min-w-[650px] text-sm text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   {['Date Paid', 'Total Paid', 'Qistain Covered', 'Receipt(s)', 'Collector'].map(h => (
@@ -308,61 +306,52 @@ export default function KhataTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(() => {
-                  // Group payments by date (YYYY-MM-DD)
-                  const groups = {};
-                  paymentHistory.forEach(pmt => {
-                    const dayKey = pmt.paidDate
-                      ? new Date(pmt.paidDate).toLocaleDateString('en-CA') // YYYY-MM-DD
-                      : 'unknown';
-                    if (!groups[dayKey]) groups[dayKey] = [];
-                    groups[dayKey].push(pmt);
-                  });
+                {historyPg.paginated.map(([dayKey, pmts]) => {
+                  const totalForDay = pmts.reduce((s, p) => s + (p.amount || 0), 0);
+                  const qistCount   = pmts.length;
+                  const isBulk      = qistCount > 1;
+                  const receipts    = pmts.map(p => p.receiptNumber).filter(Boolean);
+                  const collector   = pmts[0]?.collectedBy?.name || pmts[0]?.collectedBy?.fullName || 'Owner';
+                  const displayDate = fmtDate(pmts[0]?.paidDate);
 
-                  return Object.entries(groups)
-                    .sort(([a], [b]) => new Date(a) - new Date(b))
-                    .map(([dayKey, pmts]) => {
-                      const totalForDay = pmts.reduce((s, p) => s + (p.amount || 0), 0);
-                      const qistCount   = pmts.length;
-                      const isBulk      = qistCount > 1;
-                      const receipts    = pmts.map(p => p.receiptNumber).filter(Boolean);
-                      const collector   = pmts[0]?.collectedBy?.name || pmts[0]?.collectedBy?.fullName || 'Owner';
-                      const displayDate = fmtDate(pmts[0]?.paidDate);
-
-                      return (
-                        <tr key={dayKey} className={`transition-colors hover:bg-slate-50 ${isBulk ? 'bg-blue-50/40' : ''}`}>
-                          <td className="px-4 py-3 font-bold text-slate-800">{displayDate}</td>
-                          <td className="px-4 py-3 font-black text-emerald-600 text-base">
-                            {formatCurrency(totalForDay)}
-                          </td>
-                          <td className="px-4 py-3">
-                            {isBulk ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
-                                ⚡ {qistCount} qistain aik saath
-                              </span>
-                            ) : (
-                              <span className="text-xs text-slate-400">1 qist</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                            {receipts.length === 1
-                              ? receipts[0]
-                              : receipts.length > 1
-                                ? `${receipts[0]} +${receipts.length - 1}`
-                                : '—'
-                            }
-                          </td>
-                          <td className="px-4 py-3 text-xs text-slate-500">{collector}</td>
-                        </tr>
-                      );
-                    });
-                })()} 
+                  return (
+                    <tr key={dayKey} className={`transition-colors hover:bg-slate-50 ${isBulk ? 'bg-blue-50/40' : ''}`}>
+                      <td className="px-4 py-3 font-bold text-slate-800">{displayDate}</td>
+                      <td className="px-4 py-3 font-black text-emerald-600 text-base">
+                        {formatCurrency(totalForDay)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isBulk ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                            ⚡ {qistCount} qistain aik saath
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">1 qist</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
+                        {receipts.length === 1
+                          ? receipts[0]
+                          : receipts.length > 1
+                            ? `${receipts[0]} +${receipts.length - 1}`
+                            : '—'
+                        }
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{collector}</td>
+                    </tr>
+                  );
+                })}
                 {paymentHistory.length === 0 && (
                   <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-400 italic font-medium">Koi payment record abhi tak nahi.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          {_historyGroups.length > 0 && (
+            <div className="border-t border-slate-100 bg-slate-50/50">
+              <Pagination {...historyPg} onPageChange={historyPg.setPage} label="records" />
+            </div>
+          )}
         </div>
       )}
 
@@ -392,66 +381,15 @@ export default function KhataTab({
         </div>
       )}
 
-      {/* ── SLOT PAY MODAL ── */}
-      {slotModal && selectedSlot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-md font-black text-slate-900">Mark Qist as Paid</h2>
-              <button onClick={() => setSlotModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleSlotPaySubmit} className="p-5 space-y-4">
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-1">
-                <div className="text-[10px] font-bold text-blue-600 uppercase">Qist Details</div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Due Date:</span>
-                  <span className="font-bold text-slate-800">{fmtDate(selectedSlot.dueDate)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-500">Expected:</span>
-                  <span className="font-bold text-slate-800">{formatCurrency(selectedSlot.expectedAmount)}</span>
-                </div>
-                {selectedSlot.isSplit && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Already Paid:</span>
-                    <span className="font-bold text-emerald-600">{formatCurrency(selectedSlot.paidAmount)}</span>
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Mili Hui Rakam (Amount)</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">Rs.</span>
-                  <input type="number" value={slotAmount} onChange={e => setSlotAmount(e.target.value)} required
-                    className="w-full pl-12 pr-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-md font-black text-slate-900 focus:outline-none focus:border-blue-500" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700">Payment Mode</label>
-                  <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none mt-1">
-                    <option value="cash">Cash (Naqd)</option>
-                    <option value="bank">Bank / EasyPaisa</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-700">Notes</label>
-                  <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none mt-1" />
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setSlotModal(false)} className="flex-1 py-2.5 bg-slate-100 font-bold rounded-xl text-sm">Close</button>
-                <button type="submit" disabled={slotLoading} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm disabled:opacity-50">
-                  {slotLoading ? 'Saving...' : 'Confirm Payment'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ── COLLECT PAYMENT MODAL (slot-level) ── */}
+      <CollectPaymentModal
+        isOpen={isModalOpen}
+        onClose={() => { setIsModalOpen(false); setSelectedEntry(null); }}
+        installment={inst}
+        scheduleEntry={selectedEntry}
+        onSuccess={handlePaymentSuccessRefetch}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

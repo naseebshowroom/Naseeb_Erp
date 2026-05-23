@@ -67,8 +67,8 @@ export default function DataTable({
 
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
+      <div className="w-full overflow-x-auto">
+        <table className="w-full min-w-[700px] text-sm text-left">
           <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>

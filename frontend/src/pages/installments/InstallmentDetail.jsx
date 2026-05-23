@@ -18,6 +18,7 @@ import KhataTab from './components/KhataTab'
 import ReceiptButton from '@/components/payments/ReceiptButton'
 import { getItemDisplayName, getItemIcon } from '@/utils/itemHelper'
 import CollectPaymentModal from '@/components/payments/CollectPaymentModal'
+import Pagination, { usePagination } from '@/components/ui/Pagination'
 
 
 
@@ -37,6 +38,7 @@ export default function InstallmentDetail() {
   const [bulkSaving, setBulkSaving]   = useState(false)
   const [paymentsList, setPaymentsList] = useState([])
   const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const paymentsPg = usePagination(paymentsList, 10)
 
   const fetchPaymentsList = async () => {
     try {
@@ -367,7 +369,7 @@ export default function InstallmentDetail() {
               {paymentsLoading ? (
                 <div className="p-8 text-center text-slate-400 animate-pulse font-medium">History load ho rahi hai...</div>
               ) : (
-                <table className="w-full text-sm text-left border-collapse">
+                <table className="w-full min-w-[700px] text-sm text-left border-collapse">
                   <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-3.5">Receipt #</th>
@@ -379,7 +381,7 @@ export default function InstallmentDetail() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {paymentsList.length > 0 ? (
-                      paymentsList.map((payment) => (
+                      paymentsPg.paginated.map((payment) => (
                         <tr key={payment._id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4 font-mono font-bold text-slate-700">{payment.receiptNumber || 'RCP'}</td>
                           <td className="px-6 py-4 font-medium text-slate-900">
@@ -408,25 +410,26 @@ export default function InstallmentDetail() {
                 </table>
               )}
             </div>
+            {!paymentsLoading && paymentsList.length > 0 && (
+              <div className="border-t border-slate-100 bg-slate-50/50">
+                <Pagination {...paymentsPg} onPageChange={paymentsPg.setPage} label="payments" />
+              </div>
+            )}
           </div>
 
         </div>
       </div>
       )}
 
-      {/* Vasooli Modal */}
+      {/* Vasooli Modal — pass full installment so modal auto-finds next pending slot */}
       <CollectPaymentModal
         isOpen={vasooliOpen}
-        onClose={() => setVasooliOpen(false)}
-        customer={data?.customer}
-        preSelectedInstallmentId={data?._id}
+        onClose={() => { setVasooliOpen(false); }}
+        installment={data}
         currentUser={user}
-        onPaymentSuccess={() => {
-          setIsLoading(true)
-          loadData()
-          if (activeTab === 'khata') {
-            loadLedger()
-          }
+        onSuccess={() => {
+          loadData();
+          if (activeTab === 'khata') loadLedger();
         }}
       />
 

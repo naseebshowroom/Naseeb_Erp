@@ -236,14 +236,14 @@ export default function InventoryPage() {
                   <p className="text-sm">"Naya Maal Daalen" button se stock shamil karein</p>
                 </div>
               ) : isVehicleTab ? (
-                <table className="w-full text-sm text-left">
+                <table className="w-full min-w-[600px] text-sm text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="px-6 py-4">{activeTab === 'car' ? 'Gari' : 'Motorcycle'}</th>
-                      <th className="px-6 py-4">Engine / Chassis</th>
-                      <th className="px-6 py-4">Gahak</th>
-                      <th className="px-6 py-4">Keemat</th>
-                      <th className="px-6 py-4">Haisiyat</th>
+                      <th className="px-6 py-4 whitespace-nowrap">{activeTab === 'car' ? 'Gari' : 'Motorcycle'}</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Engine / Chassis</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Gahak</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Keemat</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Haisiyat</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -274,15 +274,15 @@ export default function InventoryPage() {
                   </tbody>
                 </table>
               ) : (
-                <table className="w-full text-sm text-left">
+                <table className="w-full min-w-[600px] text-sm text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                     <tr>
-                      <th className="px-6 py-4">Qisam</th>
-                      <th className="px-6 py-4">Samaan</th>
-                      <th className="px-6 py-4">Serial No</th>
-                      <th className="px-6 py-4">Gahak</th>
-                      <th className="px-6 py-4">Keemat</th>
-                      <th className="px-6 py-4">Haisiyat</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Qisam</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Samaan</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Serial No</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Gahak</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Keemat</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Haisiyat</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">

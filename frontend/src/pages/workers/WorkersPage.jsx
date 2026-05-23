@@ -164,7 +164,7 @@ export default function WorkersPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
+              <table className="w-full min-w-[700px] text-sm text-left">
                 <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase">
                   <tr>
                     <th className="px-6 py-4">Worker</th>
