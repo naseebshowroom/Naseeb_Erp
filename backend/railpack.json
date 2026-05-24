@@ -1,0 +1,12 @@
+{
+  "builder": "node",
+  "install": {
+    "cmd": "npm install"
+  },
+  "build": {
+    "cmd": "npx puppeteer browsers install chrome"
+  },
+  "start": {
+    "cmd": "node server.js"
+  }
+}
