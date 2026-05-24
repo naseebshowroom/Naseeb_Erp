@@ -25,36 +25,40 @@ app.use(helmet({
 
 // ── CORS ────────────────────────────────────────────────────────────────────
 const allowedOrigins = [
-  process.env.CLIENT_URL || 'http://localhost:3000',
   'http://localhost:3000',
   'http://localhost:5173', // Vite dev server
+  'http://localhost:4173', // Vite preview server
   'http://localhost:5174', // Vite fallback
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
-];
+  'https://naseeb-erp.vercel.app', // Production frontend
+  process.env.FRONTEND_URL,        // Injected via Railway/env config
+  process.env.CLIENT_URL,          // Legacy fallback
+].filter(Boolean)
 
-// In development, you might want to allow all local IPs
 const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
-  if (allowedOrigins.includes(origin)) return true;
-  // Allow local network IP addresses for mobile testing
-  if (/^http:\/\/(192\.168\.\d+\.\d+|172\.16\.\d+\.\d+|10\.\d+\.\d+\.\d+):\d+$/.test(origin)) return true;
-  return false;
-};
+  if (!origin) return true // Allow Postman, curl, mobile apps (no origin header)
+  if (allowedOrigins.includes(origin)) return true
+  // Allow local network IPs for mobile testing (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  if (/^http:\/\/(192\.168\.\d+\.\d+|172\.16\.\d+\.\d+|10\.\d+\.\d+\.\d+):\d+$/.test(origin)) return true
+  return false
+}
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
     if (isAllowedOrigin(origin)) {
-      callback(null, true);
+      callback(null, true)
     } else {
-      callback(new Error(`CORS policy violation: origin ${origin} not allowed.`));
+      callback(new Error(`CORS policy blocked origin: ${origin}`))
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+}))
+
+// Handle OPTIONS preflight before any route
+app.options('*', cors())
 
 // ── Response Compression ────────────────────────────────────────────────────
 app.use(compression());
