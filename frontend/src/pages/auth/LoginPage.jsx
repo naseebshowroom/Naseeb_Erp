@@ -47,8 +47,8 @@ export default function LoginPage() {
           <div className="w-16 h-16 bg-black rounded-2xl mx-auto flex items-center justify-center text-white mb-4 shadow-lg">
             <Building2 size={32} />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">NASEEB AUTOS &amp; SHOWROOM</h1>
-          <p className="text-slate-500 text-sm font-medium mt-1">Khضدار • Installment Management System</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">NASEEB ELECTRONICS &amp; SHOWROOM</h1>
+          <p className="text-slate-500 text-sm font-medium mt-1">Khuzdar • Installment Management System</p>
         </div>
 
         {/* Card */}
