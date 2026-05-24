@@ -1,12 +1,22 @@
 {
-  "builder": "node",
-  "install": {
-    "cmd": "npm install"
-  },
-  "build": {
-    "cmd": "npx puppeteer browsers install chrome"
-  },
-  "start": {
-    "cmd": "node server.js"
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "buildAptPackages": [
+    "libnss3",
+    "libfreetype6",
+    "libharfbuzz0b",
+    "ca-certificates",
+    "fonts-dejavu-core",
+    "fontconfig"
+  ],
+  "deploy": {
+    "aptPackages": [
+      "libnss3",
+      "libfreetype6",
+      "libharfbuzz0b",
+      "ca-certificates",
+      "fonts-dejavu-core",
+      "fontconfig"
+    ]
   }
 }
