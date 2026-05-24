@@ -10,7 +10,7 @@ export const getSettings = async (req, res) => {
     if (!settings) {
       // Create defaults if not exists
       settings = await ShopSettings.create({
-        shopName: 'Kiraya Installments',
+        shopName: 'Naseeb Installments',
         ownerName: 'Admin',
         address: 'Main Installment Market',
         city: 'Multan',

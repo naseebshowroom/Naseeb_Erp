@@ -1,9 +1,9 @@
 import puppeteer from 'puppeteer';
 
 const getBrowser = async () => {
-  const isProd = process.env.NODE_ENV === 'production';
-  
-  const options = {
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  const launchOptions = {
     headless: 'new',
     args: [
       '--no-sandbox',
@@ -14,34 +14,38 @@ const getBrowser = async () => {
       '--no-zygote',
       '--single-process',
       '--disable-gpu',
+      '--disable-extensions',
     ],
     timeout: 30000,
   };
 
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    options.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-  } else if (isProd && process.platform !== 'win32') {
-    options.executablePath = '/usr/bin/chromium-browser';
+  if (isProduction) {
+    // On Railway: PUPPETEER_EXECUTABLE_PATH env var takes priority,
+    // then fall back to known system Chromium paths (set by nixpacks.toml)
+    const chromiumPath =
+      process.env.PUPPETEER_EXECUTABLE_PATH ||
+      '/usr/bin/chromium'          ||   // Railway / nixpacks default
+      '/usr/bin/chromium-browser';      // Debian/Ubuntu alias
+
+    launchOptions.executablePath = chromiumPath;
   } else {
+    // Local dev: let Puppeteer use its own bundled Chrome
     try {
-      options.executablePath = puppeteer.executablePath();
-    } catch (e) {
-      // Ignored - fallback will handle it
+      launchOptions.executablePath = puppeteer.executablePath();
+    } catch (_) {
+      // Ignored — Puppeteer will find Chrome automatically
     }
   }
 
   try {
-    return await puppeteer.launch(options);
+    return await puppeteer.launch(launchOptions);
   } catch (err) {
-    console.warn('Primary puppeteer launch failed, attempting to launch with local Chrome channel...', err.message);
-    // Fallback: try launching with the user's installed Google Chrome
-    return await puppeteer.launch({
-      ...options,
-      channel: 'chrome',
-      executablePath: undefined, // Let Puppeteer find system Chrome
-    });
+    console.warn('[PDF] Primary launch failed, retrying with system channel...', err.message);
+    return await puppeteer.launch({ ...launchOptions, channel: 'chrome', executablePath: undefined });
   }
 };
+
+
 
 const generatePDF = async (htmlContent) => {
   let browser = null;

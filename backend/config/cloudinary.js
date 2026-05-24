@@ -13,7 +13,7 @@ cloudinary.config({
 export const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: 'kiraya_erp',
+    folder: 'naseeb_erp',
     allowed_formats: ['jpg', 'jpeg', 'png'],
     transformation: [{ width: 1000, height: 1000, crop: 'limit' }],
   },

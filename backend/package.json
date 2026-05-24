@@ -1,8 +1,8 @@
 {
-  "name": "kiraya-erp-backend",
+  "name": "naseeb-erp-backend",
   "version": "1.0.0",
   "type": "module",
-  "description": "Kiraya ERP — Installment Business Management System API",
+  "description": "Naseeb ERP — Installment Business Management System API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

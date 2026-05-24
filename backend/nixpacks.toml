@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "chromium", "nss", "freetype", "harfbuzz", "ca-certificates", "ttf-dejavu", "fontconfig"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npx puppeteer browsers install chrome"]
+
+[start]
+cmd = "node server.js"

@@ -61,7 +61,7 @@ export const useAuthStore = create(
       },
     }),
     {
-      name: 'kiraya-auth',
+      name: 'naseeb-auth',
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

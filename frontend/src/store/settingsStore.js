@@ -34,7 +34,7 @@ export const useSettingsStore = create(
       },
     }),
     {
-      name: 'kiraya-settings',
+      name: 'naseeb-settings',
       partialize: (state) => ({ settings: state.settings, isLoaded: state.isLoaded }),
     }
   )

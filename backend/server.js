@@ -15,7 +15,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kiraya_erp';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/naseeb_erp';
 const isProduction = process.env.NODE_ENV === 'production';
 
 // ── Security Headers ────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ const startServer = async () => {
   await connectDB();
 
   const server = app.listen(PORT, () => {
-    console.log(`🚀 Kiraya ERP API running in [${process.env.NODE_ENV}] mode on port ${PORT}`);
+    console.log(`🚀 Naseeb ERP API running in [${process.env.NODE_ENV}] mode on port ${PORT}`);
     console.log(`   Health check: http://localhost:${PORT}/api/health`);
   });
 

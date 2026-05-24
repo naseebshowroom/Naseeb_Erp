@@ -120,7 +120,7 @@ export default function CollectionsPage() {
 
     const doc = new jsPDF();
     doc.setFontSize(20); doc.setFont('helvetica', 'bold');
-    doc.text('KIRAYA ERP', 105, 18, { align: 'center' });
+    doc.text('NASEEB ERP', 105, 18, { align: 'center' });
     doc.setFontSize(11); doc.setFont('helvetica', 'normal');
     doc.text('ROZANA VASOOLI SHEET (Daily Collection Route)', 105, 27, { align: 'center' });
     doc.setFontSize(9);
