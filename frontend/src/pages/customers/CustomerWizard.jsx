@@ -22,26 +22,28 @@ const fullSchema = z.object({
   altPhone:   z.string().optional().or(z.literal('')),
   address:    z.string().min(10, 'Address is required (min 10 chars)'),
   city:       z.string().min(3, 'City is required'),
-  g1Name:     z.string().min(3, 'Name is required'),
-  g1Cnic:     z.string().regex(cnicRegex,  'Format: 00000-0000000-0'),
-  g1Phone:    z.string().regex(phoneRegex, 'Format: 0300-0000000'),
-  g1Address:  z.string().min(10, 'Address is required'),
-  g1Business: z.string().min(3, 'Business Name is required'),
-  g1Type:     z.string().min(3, 'Business Type is required'),
-  g2Name:     z.string().min(3, 'Name is required'),
-  g2Cnic:     z.string().regex(cnicRegex,  'Format: 00000-0000000-0'),
-  g2Phone:    z.string().regex(phoneRegex, 'Format: 0300-0000000'),
-  g2Address:  z.string().min(10, 'Address is required'),
-  g2Dept:     z.string().min(3, 'Department is required'),
-  g2Desig:    z.string().min(3, 'Designation is required'),
-  g2EmpId:    z.string().optional().or(z.literal('')),
+  g1Name:     z.string().optional().or(z.literal('')),
+  g1Father:   z.string().optional().or(z.literal('')),
+  g1Cnic:     z.string().optional().or(z.literal('')),
+  g1Phone:    z.string().optional().or(z.literal('')),
+  g1Address:  z.string().optional().or(z.literal('')),
+  g1Relation: z.string().optional().or(z.literal('')),
+  g1Dept:     z.string().optional().or(z.literal('')),
+  
+  g2Name:     z.string().optional().or(z.literal('')),
+  g2Father:   z.string().optional().or(z.literal('')),
+  g2Cnic:     z.string().optional().or(z.literal('')),
+  g2Phone:    z.string().optional().or(z.literal('')),
+  g2Address:  z.string().optional().or(z.literal('')),
+  g2Relation: z.string().optional().or(z.literal('')),
+  g2Dept:     z.string().optional().or(z.literal('')),
 })
 
 // Fields per step — for selective trigger
 const STEP_FIELDS = [
   ['fullName','fatherName','cnic','phone','altPhone','address','city'],
-  ['g1Name','g1Cnic','g1Phone','g1Address','g1Business','g1Type'],
-  ['g2Name','g2Cnic','g2Phone','g2Address','g2Dept','g2Desig','g2EmpId'],
+  ['g1Name','g1Father','g1Cnic','g1Phone','g1Address','g1Relation','g1Dept'],
+  ['g2Name','g2Father','g2Cnic','g2Phone','g2Address','g2Relation','g2Dept'],
   [],
 ]
 
@@ -166,8 +168,8 @@ export default function CustomerWizard() {
     mode: 'onTouched',
     defaultValues: {
       fullName:'', fatherName:'', cnic:'', phone:'', altPhone:'', address:'', city:'',
-      g1Name:'', g1Cnic:'', g1Phone:'', g1Address:'', g1Business:'', g1Type:'',
-      g2Name:'', g2Cnic:'', g2Phone:'', g2Address:'', g2Dept:'', g2Desig:'', g2EmpId:'',
+      g1Name:'', g1Father:'', g1Cnic:'', g1Phone:'', g1Address:'', g1Relation:'', g1Dept:'',
+      g2Name:'', g2Father:'', g2Cnic:'', g2Phone:'', g2Address:'', g2Relation:'', g2Dept:'',
     }
   })
 
@@ -184,10 +186,10 @@ export default function CustomerWizard() {
           reset({
             fullName: d.fullName||'', fatherName: d.fatherName||'', cnic: d.cnic||'',
             phone: d.phone||'', altPhone: d.alternatePhone||'', address: d.address||'', city: d.city||'',
-            g1Name: g1.fullName||'', g1Cnic: g1.cnic||'', g1Phone: g1.phone||'',
-            g1Address: g1.address||'', g1Business: g1.businessName||'', g1Type: g1.businessType||'',
-            g2Name: g2.fullName||'', g2Cnic: g2.cnic||'', g2Phone: g2.phone||'',
-            g2Address: g2.address||'', g2Dept: g2.department||'', g2Desig: g2.designation||'', g2EmpId: g2.employeeId||'',
+            g1Name: g1.fullName||'', g1Father: g1.fatherName||'', g1Cnic: g1.cnic||'', g1Phone: g1.phone||'',
+            g1Address: g1.address||'', g1Relation: g1.relation||'', g1Dept: g1.department||'',
+            g2Name: g2.fullName||'', g2Father: g2.fatherName||'', g2Cnic: g2.cnic||'', g2Phone: g2.phone||'',
+            g2Address: g2.address||'', g2Relation: g2.relation||'', g2Dept: g2.department||'',
           })
         }
       } catch (err) { handleApiError(err) }
@@ -198,8 +200,8 @@ export default function CustomerWizard() {
 
   const steps = [
     { id:1, title:'Basic Info',   desc:'Personal details & CNIC' },
-    { id:2, title:'Guarantor 1',  desc:'Business Sector' },
-    { id:3, title:'Guarantor 2',  desc:'Government Servant' },
+    { id:2, title:'Guarantor 1',  desc:'Zamin Awwal' },
+    { id:3, title:'Guarantor 2',  desc:'Zamin Doam' },
     { id:4, title:'Review',       desc:'Confirm & Submit' },
   ]
 
@@ -222,8 +224,8 @@ export default function CustomerWizard() {
       formData.append('address',         data.address)
       formData.append('city',            data.city)
       formData.append('guarantors', JSON.stringify([
-        { type:'business',   fullName:data.g1Name, cnic:data.g1Cnic, phone:data.g1Phone, address:data.g1Address, businessName:data.g1Business, businessType:data.g1Type },
-        { type:'government', fullName:data.g2Name, cnic:data.g2Cnic, phone:data.g2Phone, address:data.g2Address, department:data.g2Dept, designation:data.g2Desig, employeeId:data.g2EmpId },
+        ...(data.g1Name ? [{ type:'generic', fullName:data.g1Name, fatherName:data.g1Father, cnic:data.g1Cnic, phone:data.g1Phone, address:data.g1Address, relation:data.g1Relation, department:data.g1Dept }] : []),
+        ...(data.g2Name ? [{ type:'generic', fullName:data.g2Name, fatherName:data.g2Father, cnic:data.g2Cnic, phone:data.g2Phone, address:data.g2Address, relation:data.g2Relation, department:data.g2Dept }] : []),
       ]))
       if (data.photo?.[0])     formData.append('photo',     data.photo[0])
       if (data.cnicFront?.[0]) formData.append('cnicFront', data.cnicFront[0])
@@ -310,16 +312,17 @@ export default function CustomerWizard() {
               {/* STEP 2 */}
               {currentStep === 1 && (
                 <div className="space-y-6 animate-fade-in">
-                  <h3 className="text-lg font-bold text-slate-900 border-b pb-3">Guarantor 1 (Business Sector)</h3>
+                  <h3 className="text-lg font-bold text-slate-900 border-b pb-3">Guarantor 1 (Zamin Awwal)</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <InputField  label="Full Name"     name="g1Name"     placeholder="Guarantor naam"       {...fieldProps} />
-                    <MaskedInput label="CNIC Number"   name="g1Cnic"     placeholder="00000-0000000-0"    formatter={formatCNIC}  control={control} errors={errors} />
-                    <MaskedInput label="Phone Number"  name="g1Phone"    placeholder="0300-0000000"        formatter={formatPhone} control={control} errors={errors} />
+                    <InputField  label="Name (Naam)"          name="g1Name"     placeholder="Guarantor naam"       {...fieldProps} />
+                    <InputField  label="Father's Name"        name="g1Father"   placeholder="Walid ka naam"        {...fieldProps} />
+                    <MaskedInput label="CNIC Number"          name="g1Cnic"     placeholder="00000-0000000-0"    formatter={formatCNIC}  control={control} errors={errors} />
+                    <MaskedInput label="Phone Number"         name="g1Phone"    placeholder="0300-0000000"        formatter={formatPhone} control={control} errors={errors} />
+                    <InputField  label="Relation (Rishta)"    name="g1Relation" placeholder="e.g. Bhabi, Dost..."  {...fieldProps} />
+                    <InputField  label="Work Department"      name="g1Dept"     placeholder="e.g. Police, Shop"    {...fieldProps} />
                     <div className="md:col-span-2">
-                      <InputField label="Home Address" name="g1Address"  placeholder="Ghar ka pata..."     as="textarea" {...fieldProps} />
+                      <InputField label="Home / Shop Address" name="g1Address"  placeholder="Mukammal pata..."     as="textarea" {...fieldProps} />
                     </div>
-                    <InputField  label="Business Name" name="g1Business" placeholder="e.g. Ali Traders"    {...fieldProps} />
-                    <InputField  label="Business Type" name="g1Type"     placeholder="e.g. Electronics Shop" {...fieldProps} />
                   </div>
                 </div>
               )}
@@ -327,17 +330,17 @@ export default function CustomerWizard() {
               {/* STEP 3 */}
               {currentStep === 2 && (
                 <div className="space-y-6 animate-fade-in">
-                  <h3 className="text-lg font-bold text-slate-900 border-b pb-3">Guarantor 2 (Government Servant)</h3>
+                  <h3 className="text-lg font-bold text-slate-900 border-b pb-3">Guarantor 2 (Zamin Doam)</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <InputField  label="Full Name"          name="g2Name"   placeholder="Guarantor naam"         {...fieldProps} />
-                    <MaskedInput label="CNIC Number"        name="g2Cnic"   placeholder="00000-0000000-0"      formatter={formatCNIC}  control={control} errors={errors} />
-                    <MaskedInput label="Phone Number"       name="g2Phone"  placeholder="0300-0000000"          formatter={formatPhone} control={control} errors={errors} />
+                    <InputField  label="Name (Naam)"          name="g2Name"     placeholder="Guarantor naam"       {...fieldProps} />
+                    <InputField  label="Father's Name"        name="g2Father"   placeholder="Walid ka naam"        {...fieldProps} />
+                    <MaskedInput label="CNIC Number"          name="g2Cnic"     placeholder="00000-0000000-0"    formatter={formatCNIC}  control={control} errors={errors} />
+                    <MaskedInput label="Phone Number"         name="g2Phone"    placeholder="0300-0000000"        formatter={formatPhone} control={control} errors={errors} />
+                    <InputField  label="Relation (Rishta)"    name="g2Relation" placeholder="e.g. Bhai, Cousin..." {...fieldProps} />
+                    <InputField  label="Work Department"      name="g2Dept"     placeholder="e.g. Police, Shop"    {...fieldProps} />
                     <div className="md:col-span-2">
-                      <InputField label="Home Address"      name="g2Address" placeholder="Ghar ka pata..."       as="textarea" {...fieldProps} />
+                      <InputField label="Home / Shop Address" name="g2Address"  placeholder="Mukammal pata..."     as="textarea" {...fieldProps} />
                     </div>
-                    <InputField  label="Department/Office"  name="g2Dept"   placeholder="e.g. WAPDA"            {...fieldProps} />
-                    <InputField  label="Designation"        name="g2Desig"  placeholder="e.g. Line Superintendent" {...fieldProps} />
-                    <InputField  label="Employee ID"        name="g2EmpId"  placeholder="Optional"              {...fieldProps} />
                   </div>
                 </div>
               )}
@@ -359,17 +362,17 @@ export default function CustomerWizard() {
                     <div className="pt-4 border-t border-slate-200">
                       <h4 className="font-semibold text-blue-600 mb-2 uppercase tracking-wide text-xs">Guarantor 1</h4>
                       <div className="grid grid-cols-2 gap-2 text-slate-700">
-                        <p><span className="text-slate-500">Name:</span>     {getValues('g1Name')}</p>
-                        <p><span className="text-slate-500">CNIC:</span>     {getValues('g1Cnic')}</p>
-                        <p><span className="text-slate-500">Business:</span> {getValues('g1Business')}</p>
+                        <p><span className="text-slate-500">Name:</span>     {getValues('g1Name') || 'N/A'}</p>
+                        <p><span className="text-slate-500">CNIC:</span>     {getValues('g1Cnic') || 'N/A'}</p>
+                        <p><span className="text-slate-500">Relation:</span> {getValues('g1Relation') || 'N/A'}</p>
                       </div>
                     </div>
                     <div className="pt-4 border-t border-slate-200">
                       <h4 className="font-semibold text-blue-600 mb-2 uppercase tracking-wide text-xs">Guarantor 2</h4>
                       <div className="grid grid-cols-2 gap-2 text-slate-700">
-                        <p><span className="text-slate-500">Name:</span> {getValues('g2Name')}</p>
-                        <p><span className="text-slate-500">CNIC:</span> {getValues('g2Cnic')}</p>
-                        <p><span className="text-slate-500">Dept:</span> {getValues('g2Dept')}</p>
+                        <p><span className="text-slate-500">Name:</span> {getValues('g2Name') || 'N/A'}</p>
+                        <p><span className="text-slate-500">CNIC:</span> {getValues('g2Cnic') || 'N/A'}</p>
+                        <p><span className="text-slate-500">Relation:</span> {getValues('g2Relation') || 'N/A'}</p>
                       </div>
                     </div>
                   </div>

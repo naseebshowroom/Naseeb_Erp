@@ -229,19 +229,18 @@ export default function CustomerProfile() {
                     {customer.guarantors?.map((g, i) => (
                       <div key={i} className="bg-slate-50 p-5 rounded-xl border border-slate-100">
                         <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2 text-blue-600">
-                          {g.type === 'business' ? <Briefcase size={16} /> : <User size={16} />} 
-                          Zamanatdar {i + 1} ({g.type})
+                          <User size={16} /> Zamanatdar {i + 1}
                         </h3>
                         <div className="space-y-2 text-sm">
                           <p><span className="text-slate-500 font-medium">Naam:</span> <span className="font-bold text-slate-900">{g.fullName}</span></p>
-                          <p><span className="text-slate-500">CNIC:</span> {g.cnic}</p>
+                          {g.fatherName && <p><span className="text-slate-500">Walid:</span> {g.fatherName}</p>}
+                          {g.relation && <p><span className="text-slate-500">Rishta:</span> {g.relation}</p>}
+                          <p><span className="text-slate-500">CNIC:</span> {g.cnic || 'N/A'}</p>
                           <p><span className="text-slate-500">Phone:</span> {g.phone}</p>
-                          <p><span className="text-slate-500">Pata:</span> {g.address}</p>
-                          {g.type === 'business' ? (
-                            <p><span className="text-slate-500">Karobar:</span> {g.businessName} ({g.businessType})</p>
-                          ) : (
-                            <p><span className="text-slate-500">Dept:</span> {g.department} ({g.designation})</p>
-                          )}
+                          <p><span className="text-slate-500">Pata (Address):</span> {g.address || 'N/A'}</p>
+                          {g.department && <p><span className="text-slate-500">Kaam/Dept:</span> {g.department}</p>}
+                          {g.businessName && <p><span className="text-slate-500">Karobar:</span> {g.businessName} {g.businessType ? `(${g.businessType})` : ''}</p>}
+                          {g.designation && <p><span className="text-slate-500">Ohda:</span> {g.designation}</p>}
                         </div>
                       </div>
                     ))}
