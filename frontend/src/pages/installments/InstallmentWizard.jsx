@@ -729,32 +729,40 @@ export default function InstallmentWizard() {
   //   - noAdvance toggle does NOT set lastEdited, so toggling it only changes
   //     'remaining' and re-runs whichever direction was last active.
   useEffect(() => {
-    const price    = Number(form.installmentPrice) || 0;
-    const advance  = form.noAdvance ? 0 : (Number(form.advanceAmount) || 0);
-    const remaining = price - advance;
+    const timer = setTimeout(() => {
+      const price    = Number(form.installmentPrice) || 0;
+      const advance  = form.noAdvance ? 0 : (Number(form.advanceAmount) || 0);
+      const remaining = price - advance;
 
-    if (remaining <= 0) return; // nothing to calculate until price is set
+      if (remaining <= 0) return; // nothing to calculate until price is set
 
-    if (lastEdited.current === 'totalInstallments') {
-      // User typed total installments → recalculate per-installment amount
-      const n = Number(form.totalInstallments);
-      if (n > 0 && Number.isFinite(n)) {
-        const per = Math.round(remaining / n);
-        if (Number.isFinite(per) && String(per) !== form.perInstallmentAmount) {
-          setForm(p => ({ ...p, perInstallmentAmount: String(per) }));
+      if (lastEdited.current === 'totalInstallments') {
+        // User typed total installments → recalculate per-installment amount
+        const n = Number(form.totalInstallments);
+        if (n > 0 && Number.isFinite(n)) {
+          const per = Math.round(remaining / n);
+          if (Number.isFinite(per) && String(per) !== form.perInstallmentAmount) {
+            setForm(p => ({ ...p, perInstallmentAmount: String(per) }));
+          }
+        }
+      } else if (lastEdited.current === 'perInstallment') {
+        // User typed per-installment → recalculate total installments
+        const per = Number(form.perInstallmentAmount);
+        if (per > 0 && Number.isFinite(per)) {
+          const n = Math.ceil(remaining / per);
+          if (Number.isFinite(n) && String(n) !== form.totalInstallments) {
+            setForm(p => ({ ...p, totalInstallments: String(n) }));
+          }
+        } else if (!form.perInstallmentAmount || isNaN(per) || per <= 0) {
+          // If perQist is 0, empty, or NaN — do NOT divide, set installments to 0
+          if (form.totalInstallments !== '0' && form.totalInstallments !== '') {
+            setForm(p => ({ ...p, totalInstallments: '0' }));
+          }
         }
       }
-    } else if (lastEdited.current === 'perInstallment') {
-      // User typed per-installment → recalculate total installments
-      const per = Number(form.perInstallmentAmount);
-      if (per > 0 && Number.isFinite(per)) {
-        const n = Math.ceil(remaining / per);
-        if (Number.isFinite(n) && String(n) !== form.totalInstallments) {
-          setForm(p => ({ ...p, totalInstallments: String(n) }));
-        }
-      }
-    }
-    // If lastEdited.current === null (initial load), don't overwrite anything.
+    }, 800);
+
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount, form.totalInstallments]);
   // └── Both fields in deps so the effect re-runs when either changes, but the

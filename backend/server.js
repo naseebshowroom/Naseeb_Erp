@@ -14,6 +14,13 @@ import routes from './routes/index.js';
 dotenv.config();
 
 const app = express();
+
+// BUG FIX: Railway hosts the app behind a reverse proxy (load balancer).
+// express-rate-limit needs to read the client's true IP from the X-Forwarded-For
+// header, but Express ignores it by default for security. We must explicitly
+// tell Express to trust the first proxy hop.
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/naseeb_erp';
 const isProduction = process.env.NODE_ENV === 'production';
