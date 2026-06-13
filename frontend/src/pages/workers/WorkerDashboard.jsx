@@ -17,8 +17,9 @@ export default function WorkerDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeModal, setActiveModal] = useState(null)
   const [selectedCust, setSelectedCust] = useState(null)
+  const [selectedInstallment, setSelectedInstallment] = useState(null) // BUG 3 FIX: track full installment
   const [preSelectedInstallmentId, setPreSelectedInstallmentId] = useState(null)
-  const [latestPayment, setLatestPayment] = useState(null) // Stores last recorded payment for receipt download
+  const [latestPayment, setLatestPayment] = useState(null)
 
   const fetchTodayRoute = async () => {
     if (!user) return
@@ -63,6 +64,13 @@ export default function WorkerDashboard() {
 
   const openPaymentModal = (cust) => {
     setSelectedCust(cust.customer)
+    // BUG 3 FIX: Pass the full installment object so CollectPaymentModal
+    // skips the product-dropdown step (it knows which item is being collected).
+    // Old code only set preSelectedInstallmentId (an ID), which still required
+    // the dropdown to load and find the installment from the API response.
+    // With installment assigned from the assignment record itself, the modal
+    // immediately shows the payment amount fields — no dropdown, no empty state.
+    setSelectedInstallment(cust.installment || null)
     setPreSelectedInstallmentId(cust.installmentId)
     setActiveModal('collect')
   }
@@ -179,13 +187,21 @@ export default function WorkerDashboard() {
           </div>
         ) : route.length === 0 ? (
           <div className="bg-slate-900/40 rounded-3xl border border-slate-800/80 p-8 text-center flex flex-col items-center gap-4">
-            <div className="w-16 h-16 bg-slate-800/50 rounded-2xl flex items-center justify-center border border-slate-700/50 text-indigo-400">
-              <Sparkles size={28} />
+            <div className="w-16 h-16 bg-slate-800/50 rounded-2xl flex items-center justify-center border border-slate-700/50 text-amber-400">
+              <MapPin size={28} />
             </div>
             <div>
-              <h4 className="font-bold text-slate-200">Aaj ka kaam mukammal!</h4>
-              <p className="text-xs text-slate-500 mt-1">Koi assignment pending nahi hai. (All clean!)</p>
+              {/* BUG 3 FIX: Distinguish "no assignments" from "all done" */}
+              <h4 className="font-bold text-slate-200">Aaj koi route assign nahi hua</h4>
+              <p className="text-xs text-slate-500 mt-1">Malik ne abhi tak route assign nahi ki.</p>
+              <p className="text-xs text-slate-500">Malik se rabta karein ya thodi der baad try karein.</p>
             </div>
+            <button
+              onClick={fetchTodayRoute}
+              className="px-5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm font-bold text-slate-300 hover:bg-slate-700 transition-colors flex items-center gap-2"
+            >
+              <Navigation size={14} /> Route Dobara Load Karein
+            </button>
           </div>
         ) : (
           route.map((cust, idx) => (
@@ -278,9 +294,14 @@ export default function WorkerDashboard() {
         onClose={() => {
           setActiveModal(null)
           setSelectedCust(null)
+          setSelectedInstallment(null)
           setPreSelectedInstallmentId(null)
         }}
         customer={selectedCust}
+        // BUG 3 FIX: Pass full installment object to skip the product-select dropdown.
+        // When installment prop is provided, modal shows the payment form immediately
+        // instead of showing ProductInstallmentSelect with an API-fetched dropdown.
+        installment={selectedInstallment}
         preSelectedInstallmentId={preSelectedInstallmentId}
         currentUser={user}
         onPaymentSuccess={(result) => {

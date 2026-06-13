@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext, Component } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext, Component, useMemo } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { ChevronRight, ChevronLeft, Check, AlertTriangle, Info, Search, User, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -164,6 +164,12 @@ export default function InstallmentWizard() {
   const [activeGuarantorAccordion, setActiveGuarantorAccordion] = useState(null)
   const [prefilledCustomer, setPrefilledCustomer] = useState(null) // locked customer info banner
 
+  // ── BUG 1 FIX: lastEdited ref for bidirectional calculation ──────────────
+  // Tracks which of the two calculation fields was last touched by the user.
+  // 'perInstallment' | 'totalInstallments' | null
+  // The useEffect reads this to decide which direction to calculate.
+  const lastEdited = useRef(null)
+
   // BUG 4 FIX: Sync form state → sessionStorage on every change (new installs only)
   useEffect(() => {
     if (!isEditing && !isAddingForExistingCustomer) {
@@ -320,37 +326,55 @@ export default function InstallmentWizard() {
     load()
   }, [id, isEditing])
 
-  // ── BUG 5 FIX: Infinite loop in auto-calculate useEffect ──────────────────
-  // ROOT CAUSE: `form.totalInstallments` was in the dependency array AND was
-  // being set by this effect. The cycle was:
-  //   1. User types in perInstallmentAmount
-  //   2. Effect runs, calculates new totalInstallments, calls setForm
-  //   3. setForm updates form.totalInstallments → effect re-runs
-  //   4. New String(calculated) !== form.totalInstallments? Yes → setForm again
-  //   5. ∞ loop → React throws → wizard unmounts → resets to step 1
+  // ── BUG 1 FIX: Bidirectional calculation with lastEdited ref ────────────────
   //
-  // FIX: Remove `form.totalInstallments` from the dependency array.
-  // The guard `if (form.totalInstallments !== String(calculatedTotal))`
-  // still prevents extra renders — it just no longer CAUSES the loop.
+  // OLD BEHAVIOUR (broken):
+  //   - Only one direction: perInstallmentAmount → totalInstallments
+  //   - When user typed in totalInstallments: nothing recalculated
+  //   - When noAdvance toggled → advanceAmount = '0' → remaining changed
+  //     → effect ran → if perInstallmentAmount was '' → set totalInstallments = ''
+  //     → jarring UX & could still loop with sessionStorage writes
+  //
+  // NEW BEHAVIOUR:
+  //   - lastEdited.current is set by the change handlers below (not by the effect)
+  //   - Effect only runs on [installmentPrice, advanceAmount, noAdvance,
+  //     perInstallmentAmount, totalInstallments] but ONLY acts in one direction
+  //     based on lastEdited.current — the opposite field is never set unless
+  //     the computed value differs AND inputs are valid.
+  //   - All divisions are guarded: Number.isFinite() AND > 0.
+  //   - noAdvance toggle does NOT set lastEdited, so toggling it only changes
+  //     'remaining' and re-runs whichever direction was last active.
   useEffect(() => {
-    const price = Number(form.installmentPrice) || 0;
-    const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
-    const remainingAmount = price - advance;
-    const perInst = Number(form.perInstallmentAmount) || 0;
-    // BUG 5 FIX: Guard against divide-by-zero and empty inputs
-    if (remainingAmount > 0 && perInst > 0) {
-      const calculatedTotal = Math.ceil(remainingAmount / perInst);
-      if (form.totalInstallments !== String(calculatedTotal)) {
-        setForm(p => ({ ...p, totalInstallments: String(calculatedTotal) }));
+    const price    = Number(form.installmentPrice) || 0;
+    const advance  = form.noAdvance ? 0 : (Number(form.advanceAmount) || 0);
+    const remaining = price - advance;
+
+    if (remaining <= 0) return; // nothing to calculate until price is set
+
+    if (lastEdited.current === 'totalInstallments') {
+      // User typed total installments → recalculate per-installment amount
+      const n = Number(form.totalInstallments);
+      if (n > 0 && Number.isFinite(n)) {
+        const per = Math.round(remaining / n);
+        if (Number.isFinite(per) && String(per) !== form.perInstallmentAmount) {
+          setForm(p => ({ ...p, perInstallmentAmount: String(per) }));
+        }
       }
-    } else {
-      if (form.totalInstallments !== '') {
-        setForm(p => ({ ...p, totalInstallments: '' }));
+    } else if (lastEdited.current === 'perInstallment') {
+      // User typed per-installment → recalculate total installments
+      const per = Number(form.perInstallmentAmount);
+      if (per > 0 && Number.isFinite(per)) {
+        const n = Math.ceil(remaining / per);
+        if (Number.isFinite(n) && String(n) !== form.totalInstallments) {
+          setForm(p => ({ ...p, totalInstallments: String(n) }));
+        }
       }
     }
+    // If lastEdited.current === null (initial load), don't overwrite anything.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount]);
-  // └── NOTE: form.totalInstallments intentionally EXCLUDED from deps ──────────
+  }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount, form.totalInstallments]);
+  // └── Both fields in deps so the effect re-runs when either changes, but the
+  //     body only writes to the OPPOSITE field — no circular loop possible.
 
   const getLocalSchedulePreview = () => {
     const price = Number(form.installmentPrice) || 0;
@@ -404,6 +428,18 @@ export default function InstallmentWizard() {
   };
 
   const set = (field, val) => setForm(p => ({ ...p, [field]: val }))
+
+  // BUG 1 FIX: Wrapped handlers that set lastEdited.current before updating state.
+  // These are used for the two linked calculation fields only.
+  const setPerInstallmentAmount = useCallback((val) => {
+    lastEdited.current = 'perInstallment'
+    setForm(p => ({ ...p, perInstallmentAmount: val }))
+  }, [])
+
+  const setTotalInstallments = useCallback((val) => {
+    lastEdited.current = 'totalInstallments'
+    setForm(p => ({ ...p, totalInstallments: val }))
+  }, [])
 
   // Debounced chassis lookup
   const onChassisChange = (val) => {
@@ -600,13 +636,35 @@ export default function InstallmentWizard() {
           </button>
           {activeGuarantorAccordion === 'g1' && (
             <div className="p-5 bg-white space-y-4 animate-fadeIn">
+              {/* BUG 2 FIX: Replaced fixed <select> + duplicate English field
+                  with a single free-text + <datalist> Urdu/Roman-Urdu input.
+                  The datalist shows suggestions but DOES NOT restrict input —
+                  any text (Urdu script, Roman Urdu, English) is accepted. */}
+              <datalist id="g1-relation-suggestions">
+                {['Bhai', 'Behan', 'Dost', 'Bhabi', 'Khaala', 'Mamoo',
+                  'Phupho', 'Chacha', 'Susral', 'Sahulkar', 'Hamsaya',
+                  'Baap', 'Beta', 'Cousin', 'بھائی', 'بہن', 'دوست', 'بھابھی', 'خالہ',
+                  'مامو', 'پھوپھو', 'چچا', 'سسرال',
+                ].map(r => <option key={r} value={r} />)}
+              </datalist>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input label="Name (Naam)" field="g1_name" placeholder="Name of Guarantor 1" />
                 <Input label="Father's Name (Walid ka Naam)" field="g1_fatherName" placeholder="Father name" />
                 <Input label="CNIC (Optional)" field="g1_cnic" placeholder="XXXXX-XXXXXXX-X" />
                 <Input label="Phone (Mobile)" field="g1_phone" placeholder="0300-1234567" />
-                <Input label="Relation (Rishta)" field="g1_relation" placeholder="e.g. Brother, Friend" />
-                <Input label="Relation in Urdu (Rishta Urdu)" field="g1_relationUrdu" placeholder="e.g. بھائی, دوست" />
+                {/* Single Urdu relation field replaces the old English dropdown + Urdu field pair */}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Rishta (Relation)</label>
+                  <input
+                    type="text"
+                    list="g1-relation-suggestions"
+                    value={form.g1_relationUrdu || ''}
+                    onChange={e => set('g1_relationUrdu', e.target.value)}
+                    placeholder="e.g. Bhabi, Dost, دوست, بھائی..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    dir="auto"
+                  />
+                </div>
                 <Input label="Work Department / Job (Mulazmat)" field="g1_workDepartment" placeholder="e.g. Police, Education, Business" />
               </div>
               <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g1_businessAddress" placeholder="Full shop or business address" />
@@ -629,13 +687,30 @@ export default function InstallmentWizard() {
           </button>
           {activeGuarantorAccordion === 'g2' && (
             <div className="p-5 bg-white space-y-4 animate-fadeIn">
+              <datalist id="g2-relation-suggestions">
+                {['Bhai', 'Behan', 'Dost', 'Bhabi', 'Khaala', 'Mamoo',
+                  'Phupho', 'Chacha', 'Susral', 'Sahulkar', 'Hamsaya',
+                  'Baap', 'Beta', 'Cousin', 'بھائی', 'بہن', 'دوست', 'بھابھی', 'خالہ',
+                  'مامو', 'پھوپھو', 'چچا', 'سسرال',
+                ].map(r => <option key={r} value={r} />)}
+              </datalist>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input label="Name (Naam)" field="g2_name" placeholder="Name of Guarantor 2" />
                 <Input label="Father's Name (Walid ka Naam)" field="g2_fatherName" placeholder="Father name" />
                 <Input label="CNIC (Optional)" field="g2_cnic" placeholder="XXXXX-XXXXXXX-X" />
                 <Input label="Phone (Mobile)" field="g2_phone" placeholder="0300-1234567" />
-                <Input label="Relation (Rishta)" field="g2_relation" placeholder="e.g. Brother, Friend" />
-                <Input label="Relation in Urdu (Rishta Urdu)" field="g2_relationUrdu" placeholder="e.g. بھائی, دوست" />
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Rishta (Relation)</label>
+                  <input
+                    type="text"
+                    list="g2-relation-suggestions"
+                    value={form.g2_relationUrdu || ''}
+                    onChange={e => set('g2_relationUrdu', e.target.value)}
+                    placeholder="e.g. Bhabi, Dost, دوست, بھائی..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    dir="auto"
+                  />
+                </div>
                 <Input label="Work Department / Job (Mulazmat)" field="g2_workDepartment" placeholder="e.g. Police, Education, Business" />
               </div>
               <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g2_businessAddress" placeholder="Full shop or business address" />
@@ -796,7 +871,13 @@ export default function InstallmentWizard() {
         </div>
         {/* No Advance toggle */}
         <div
-          onClick={() => { set('noAdvance', !form.noAdvance); if (!form.noAdvance) set('advanceAmount', '0') }}
+          onClick={() => {
+            // BUG 1 FIX: noAdvance toggle must NOT set lastEdited.current.
+            // Toggling it changes 'remaining', which will re-trigger the effect
+            // in whichever direction was last active — that is the correct behaviour.
+            set('noAdvance', !form.noAdvance);
+            if (!form.noAdvance) set('advanceAmount', '0');
+          }}
           className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 text-sm ${form.noAdvance ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
           <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.noAdvance ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
             {form.noAdvance && <Check size={10} className="text-white" />}
@@ -808,15 +889,34 @@ export default function InstallmentWizard() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Per Installment Amount / Qist (Rs.)" field="perInstallmentAmount" type="number" required placeholder="5000" hint="Enter per-installment amount" />
+          {/* BUG 1 FIX: use setPerInstallmentAmount to set lastEdited='perInstallment' */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Per Installment Amount / Qist (Rs.) <span className="text-red-500 ml-0.5">*</span></label>
+            <input
+              type="number"
+              value={form.perInstallmentAmount}
+              onChange={e => setPerInstallmentAmount(e.target.value)}
+              placeholder="5000"
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            <p className="text-xs text-slate-400">Enter per-installment amount — total qistain auto-calculate hongi</p>
+          </div>
+
+          {/* BUG 1 FIX: editable total installments field with setTotalInstallments */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Kul Qistain (Total Installments)</label>
+            <input
+              type="number"
+              value={form.totalInstallments}
+              onChange={e => setTotalInstallments(e.target.value)}
+              placeholder="Khud-ba-khud calculate hogi"
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            <p className="text-xs text-slate-400">Ya yahaan total type karein — qist auto-update hogi</p>
+          </div>
+
           <Select label="Schedule Type (Qist ki Qisam)" field="scheduleType" options={SCHEDULE_TYPES} />
           <Input label="Start Date (Shuru ki Tariikh)" field="startDate" type="date" />
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Calculated Duration (Kul Qistain)</label>
-            <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 h-[38px] flex items-center">
-              {localSchedule.length > 0 ? `${localSchedule.length} Payments / Qistain` : 'Enter prices above to calculate'}
-            </div>
-          </div>
         </div>
 
         {localSchedule.length > 0 && (

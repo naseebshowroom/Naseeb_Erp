@@ -21,7 +21,17 @@ export const getTodaysCollections = async (req, res) => {
     const collections = await CollectionAssignment.find({
       worker: workerId,
       date: { $gte: startOfDay, $lte: endOfDay }
-    }).populate('customer').populate('installment').sort({ createdAt: -1 });
+    })
+      .populate('customer', 'fullName phone address cnic city')
+      // BUG 3 FIX: Populate full installment with paymentSchedule + all fields
+      // needed by CollectPaymentModal to skip the product dropdown and pre-fill
+      // the payment amount.
+      .populate({
+        path: 'installment',
+        populate: { path: 'customer', select: 'fullName phone' },
+        select: 'brand model category khataNumber perInstallmentAmount remainingAmount totalInstallments scheduleType paymentSchedule status displayLabel customer',
+      })
+      .sort({ createdAt: -1 });
 
     res.json({ success: true, data: collections });
   } catch (error) {

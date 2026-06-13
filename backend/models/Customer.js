@@ -6,15 +6,12 @@ const guarantorSchema = new mongoose.Schema({
   cnic: { type: String },
   phone: { type: String, required: true },
   address: { type: String },
-  relation: { 
-    type: String,
-    enum: [
-      'Brother', 'Father', 'Son', 
-      'Friend', 'Colleague', 
-      'Government Employee', 
-      'Business Owner', 'Other'
-    ]
-  },
+  // BUG 2 FIX: Removed the English-only enum restriction.
+  // Old: enum: ['Brother', 'Father', 'Son', 'Friend', 'Colleague', ...]
+  // This caused a Mongoose ValidationError when saving any Urdu/Roman-Urdu
+  // relation text (e.g. 'Bhabi', 'Khaala', 'دوست').
+  // Now: free text, trimmed, any language/script accepted.
+  relation: { type: String, trim: true },
   profession: { type: String },
   // Government Specific
   department: { type: String },
