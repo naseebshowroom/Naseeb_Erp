@@ -395,7 +395,7 @@ function StepSchedule({ form, set, setPerInstallmentAmount, setTotalInstallments
         }
       }
       setPreview({ schedule, total: count });
-    }, 800);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount, form.startDate, form.scheduleType]);
@@ -770,7 +770,7 @@ export default function InstallmentWizard() {
           }
         }
       }
-    }, 800);
+    }, 1500);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
