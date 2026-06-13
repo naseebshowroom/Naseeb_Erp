@@ -127,6 +127,377 @@ const INIT = {
   notes: ''
 }
 
+// ── Top-level step components (prevent remount on every parent render) ────────
+
+function StepCustomer({ form, set, isAddingForExistingCustomer, prefilledCustomer, activeGuarantorAccordion, setActiveGuarantorAccordion }) {
+  return (
+    <div className="space-y-6">
+      {isAddingForExistingCustomer && prefilledCustomer ? (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0 font-black text-blue-700 text-lg">
+            {prefilledCustomer.fullName?.charAt(0)}
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-blue-900 text-sm">{prefilledCustomer.fullName}</span>
+              <Lock size={12} className="text-blue-400" />
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Auto-filled</span>
+            </div>
+            <p className="text-xs text-blue-700 mt-0.5">{prefilledCustomer.phone} · {prefilledCustomer.city}</p>
+            <p className="text-[11px] text-blue-500 mt-1">Customer ka record already maujood hai. Sirf naya product/plan add ho raha hai.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="border-b border-slate-100 pb-4 mb-4">
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Customer Details / Grahak ki Maaloomat</h3>
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input label="Full Name (Poora Naam)" field="fullName" required placeholder="e.g. Muhammad Ali" />
+        <Input label="Father's Name (Walid ka Naam)" field="fatherName" required placeholder="e.g. Muhammad Hussain" />
+        <Input label="CNIC (Optional)" field="cnic" placeholder="XXXXX-XXXXXXX-X" hint="Leave blank if no CNIC available" />
+        <Input label="Phone (Mobile)" field="phone" required placeholder="0300-1234567" />
+        <Input label="City" field="city" required placeholder="e.g. Khuzdar" />
+        <Input label="Khata Number (Daftar Nambur)" field="khataNumber" placeholder="e.g. 047" hint="Owner types manually — appears on all documents" />
+      </div>
+      <Input label="Address (Ghar ka Pata)" field="address" required placeholder="Full address" />
+      <Select label="Investor / Capital (Sarmaaya Kisne Lagaya)" field="investorName" options={INVESTOR_OPTIONS} />
+      <div className="mt-8 space-y-4 pt-6 border-t border-slate-100">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Guarantors / Zamin (Optional)</h3>
+          <p className="text-xs text-slate-500">Provide details for up to two guarantors to print on the agreement</p>
+        </div>
+        <div className="border border-slate-200 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm">
+          <button type="button" onClick={() => setActiveGuarantorAccordion(activeGuarantorAccordion === 'g1' ? null : 'g1')}
+            className={`w-full px-5 py-4 flex items-center justify-between text-left font-bold text-sm ${activeGuarantorAccordion === 'g1' ? 'bg-blue-50/50 text-blue-700 border-b border-slate-100' : 'bg-slate-50/50 text-slate-700 hover:bg-slate-50'}`}>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${form.g1_name && form.g1_phone ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+              <span>Guarantor 1 / Pehla Zamin (Zamin Awwal)</span>
+            </div>
+            <span className="text-xs text-slate-400 font-normal">{activeGuarantorAccordion === 'g1' ? 'Collapse ▲' : 'Expand ▼'}</span>
+          </button>
+          {activeGuarantorAccordion === 'g1' && (
+            <div className="p-5 bg-white space-y-4 animate-fadeIn">
+              <datalist id="g1-relation-suggestions">
+                {['Bhai','Behan','Dost','Bhabi','Khaala','Mamoo','Phupho','Chacha','Susral','Sahulkar','Hamsaya','Baap','Beta','Cousin','بھائی','بہن','دوست','بھابھی','خالہ','مامو','پھوپھو','چچا','سسرال'].map(r => <option key={r} value={r} />)}
+              </datalist>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Name (Naam)" field="g1_name" placeholder="Name of Guarantor 1" />
+                <Input label="Father's Name (Walid ka Naam)" field="g1_fatherName" placeholder="Father name" />
+                <Input label="CNIC (Optional)" field="g1_cnic" placeholder="XXXXX-XXXXXXX-X" />
+                <Input label="Phone (Mobile)" field="g1_phone" placeholder="0300-1234567" />
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Rishta (Relation)</label>
+                  <input type="text" list="g1-relation-suggestions" value={form.g1_relationUrdu || ''}
+                    onChange={e => set('g1_relationUrdu', e.target.value)}
+                    placeholder="e.g. Bhabi, Dost, دوست, بھائی..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" dir="auto" />
+                </div>
+                <Input label="Work Department / Job (Mulazmat)" field="g1_workDepartment" placeholder="e.g. Police, Education, Business" />
+              </div>
+              <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g1_businessAddress" placeholder="Full shop or business address" />
+            </div>
+          )}
+        </div>
+        <div className="border border-slate-200 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm">
+          <button type="button" onClick={() => setActiveGuarantorAccordion(activeGuarantorAccordion === 'g2' ? null : 'g2')}
+            className={`w-full px-5 py-4 flex items-center justify-between text-left font-bold text-sm ${activeGuarantorAccordion === 'g2' ? 'bg-blue-50/50 text-blue-700 border-b border-slate-100' : 'bg-slate-50/50 text-slate-700 hover:bg-slate-50'}`}>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${form.g2_name && form.g2_phone ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+              <span>Guarantor 2 / Doosra Zamin (Zamin Doam)</span>
+            </div>
+            <span className="text-xs text-slate-400 font-normal">{activeGuarantorAccordion === 'g2' ? 'Collapse ▲' : 'Expand ▼'}</span>
+          </button>
+          {activeGuarantorAccordion === 'g2' && (
+            <div className="p-5 bg-white space-y-4 animate-fadeIn">
+              <datalist id="g2-relation-suggestions">
+                {['Bhai','Behan','Dost','Bhabi','Khaala','Mamoo','Phupho','Chacha','Susral','Sahulkar','Hamsaya','Baap','Beta','Cousin','بھائی','بہن','دوست','بھابھی','خالہ','مامو','پھوپھو','چچا','سسرال'].map(r => <option key={r} value={r} />)}
+              </datalist>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Name (Naam)" field="g2_name" placeholder="Name of Guarantor 2" />
+                <Input label="Father's Name (Walid ka Naam)" field="g2_fatherName" placeholder="Father name" />
+                <Input label="CNIC (Optional)" field="g2_cnic" placeholder="XXXXX-XXXXXXX-X" />
+                <Input label="Phone (Mobile)" field="g2_phone" placeholder="0300-1234567" />
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">Rishta (Relation)</label>
+                  <input type="text" list="g2-relation-suggestions" value={form.g2_relationUrdu || ''}
+                    onChange={e => set('g2_relationUrdu', e.target.value)}
+                    placeholder="e.g. Bhabi, Dost, دوست, بھائی..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" dir="auto" />
+                </div>
+                <Input label="Work Department / Job (Mulazmat)" field="g2_workDepartment" placeholder="e.g. Police, Education, Business" />
+              </div>
+              <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g2_businessAddress" placeholder="Full shop or business address" />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StepProduct({ form, set, distributors, onChassisChange, chassisSearch }) {
+  const useExistingAsset = () => {
+    set('assetId', chassisSearch.found._id)
+    toast.success('Existing asset record linked!')
+  }
+  return (
+    <div className="space-y-4">
+      <div onClick={() => set('isCashSale', !form.isCashSale)}
+        className={`cursor-pointer border-2 rounded-xl p-4 flex items-center gap-3 transition-colors ${form.isCashSale ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${form.isCashSale ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300'}`}>
+          {form.isCashSale && <Check size={11} className="text-white" />}
+        </div>
+        <div>
+          <div className="font-bold text-slate-900">💵 Direct Cash Sale (Naqd Farokht)</div>
+          <div className="text-xs text-slate-500">No installment plan — full cash payment only. Schedule step will be skipped.</div>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Select label="Category (Qisam)" field="category" options={CATEGORIES} required />
+        {form.category === 'other' && <Input label="Custom Category (Qisam ka Naam)" field="customCategory" placeholder="Fan, Speaker, etc." />}
+        {form.category === 'other' ? (
+          <Input label="Samaan ka Naam (e.g., Orient Fan, Sony Speaker) *" field="customItemName" placeholder="Orient Fan..." required />
+        ) : (
+          <>
+            <Input label="Brand (Kumpani)" field="brand" placeholder="Honda, Samsung, etc." />
+            <Input label="Model" field="model" placeholder="CD70, Galaxy S23, etc." />
+          </>
+        )}
+        <Input label="Color (Rang)" field="color" placeholder="Red, Black, White..." />
+        <Select label="Condition (Haalat)" field="condition" options={[{value:'new',label:'New'},{value:'used',label:'Used'}]} />
+      </div>
+      {['motorcycle','car'].includes(form.category) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-slate-700">Chassis # (Chassis Nambur)</label>
+            <div className="relative">
+              <input value={form.chassisNumber} onChange={e => onChassisChange(e.target.value)}
+                placeholder="Enter chassis number..."
+                className="w-full px-3 py-2 pr-9 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+              {chassisSearch.loading && <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-pulse" />}
+            </div>
+            {!chassisSearch.loading && chassisSearch.found && (() => {
+              const found = chassisSearch.found
+              const canIssue = found.canIssueNow || ['in-stock','returned','repossessed'].includes(found.currentStatus)
+              const alertType = found.statusAlert?.type || (canIssue ? 'success' : 'warning')
+              const isConflict = found.currentStatus === 'on-installment'
+              const isResold   = found.currentStatus === 'resold-other'
+              const borderColor = canIssue ? '#16a34a' : '#f59e0b'
+              const bg = canIssue ? '#f0fdf4' : '#fffbeb'
+              const textColor = canIssue ? '#15803d' : '#92400e'
+              return (
+                <div style={{ marginTop:'8px',padding:'12px 14px',borderRadius:'9px',border:`1.5px solid ${borderColor}`,background:bg }}>
+                  <div style={{ fontWeight:'700',fontSize:'13px',color:textColor }}>
+                    {alertType === 'success' ? '✅' : '⚠️'} {found.statusAlert?.message || found.currentStatus}
+                  </div>
+                  <div style={{ fontSize:'12px',color:'#374151',marginTop:'4px' }}>
+                    {found.brand} {found.model}{found.color ? ` — ${found.color}` : ''}
+                    &nbsp;|&nbsp;🔗 {found.totalHolderCount || 1} holder(s)
+                  </div>
+                  {found.currentHolder?.thirdPartyName && (
+                    <div style={{ fontSize:'12px',color:'#64748b' }}>Currently with: {found.currentHolder.thirdPartyName}</div>
+                  )}
+                  {found.currentHolder?.customerId?.fullName && (
+                    <div style={{ fontSize:'12px',color:'#64748b' }}>Currently with: {found.currentHolder.customerId.fullName}</div>
+                  )}
+                  {canIssue && !form.assetId && (
+                    <button onClick={useExistingAsset}
+                      style={{ marginTop:'8px',fontSize:'12px',background:'#16a34a',color:'white',border:'none',borderRadius:'5px',padding:'5px 12px',cursor:'pointer',fontWeight:'600' }}>
+                      ✓ Isi Asset Record se Link Karein
+                    </button>
+                  )}
+                  {form.assetId && <div style={{ marginTop:'6px',fontSize:'12px',color:'#16a34a',fontWeight:'700' }}>✅ Linked to existing asset record</div>}
+                  {(isConflict || isResold) && !form.assetId && (
+                    <div style={{ display:'flex',gap:'8px',alignItems:'center',marginTop:'8px' }}>
+                      <span style={{ fontSize:'11px',color:'#92400e' }}>Kya aap phir bhi proceed karna chahte hain?</span>
+                      <button
+                        onClick={() => { set('assetId', found._id); set('assetConflictNote', `Asset was ${found.currentStatus} at time of new installment`) }}
+                        style={{ fontSize:'11px',background:'#f59e0b',color:'white',border:'none',borderRadius:'4px',padding:'4px 10px',cursor:'pointer',fontWeight:'600' }}>
+                        Haan, Proceed Karein
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+            {!chassisSearch.loading && form.chassisNumber && form.chassisNumber.length >= 4 && !chassisSearch.found && (
+              <div style={{ marginTop:'6px',padding:'8px 12px',borderRadius:'7px',border:'1px solid #16a34a',background:'#f0fdf4',fontSize:'12px',color:'#15803d',fontWeight:'600' }}>
+                🆕 Naya Asset — System mein nahi hai. Automatically register hoga.
+              </div>
+            )}
+          </div>
+          <Input label="Engine # (Engine Nambur)" field="engineNumber" placeholder="Enter engine number" />
+        </div>
+      )}
+      {!['motorcycle','car'].includes(form.category) && (
+        <Input label="Serial Number" field="serialNumber" placeholder="IMEI or serial" />
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input label="Purchase Price / Laagte (Rs.)" field="purchasePrice" type="number" required placeholder="85000" hint="What owner paid to distributor" />
+        <Input label={`${form.isCashSale ? 'Cash Sale' : 'Installment'} Price / Bechne ki Qeemat (Rs.)`} field="installmentPrice" type="number" required placeholder="120000" />
+        <Input label="Registration Fee (Rirjistrishun) (Rs.)" field="registrationFee" type="number" placeholder="0" />
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">Distributor (Supplier)</label>
+          <select value={form.distributor} onChange={e => set('distributor', e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none">
+            <option value="">-- Select Distributor --</option>
+            {distributors.map(d => <option key={d._id} value={d._id}>{d.name} — {d.companyName}</option>)}
+          </select>
+        </div>
+      </div>
+      <Select label="Asset Status (Maal ki Halat)" field="assetStatus" options={ASSET_STATUSES} />
+      {form.assetStatus === 'Resold-to-Other' && (
+        <div className="grid grid-cols-2 gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+          <Input label="3rd Party Name" field="resoldToName" placeholder="Name of person" />
+          <Input label="3rd Party Phone" field="resoldToPhone" placeholder="0300-0000000" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StepSchedule({ form, set, setPerInstallmentAmount, setTotalInstallments }) {
+  const getLocalSchedulePreview = () => {
+    const price = Number(form.installmentPrice) || 0;
+    const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
+    const remainingAmount = price - advance;
+    const perInst = Number(form.perInstallmentAmount) || 0;
+    if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) return [];
+    const schedule = [];
+    const currentDate = new Date(form.startDate);
+    currentDate.setHours(0, 0, 0, 0);
+    const count = Math.ceil(remainingAmount / perInst);
+    let balanceTracker = remainingAmount;
+    for (let i = 0; i < count; i++) {
+      const dueDate = new Date(currentDate);
+      const expectedAmount = balanceTracker >= perInst ? perInst : balanceTracker;
+      schedule.push({ qistNo: i + 1, dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), expectedAmount });
+      balanceTracker -= expectedAmount;
+      switch (form.scheduleType) {
+        case 'daily': currentDate.setDate(currentDate.getDate() + 1); break;
+        case 'weekly': currentDate.setDate(currentDate.getDate() + 7); break;
+        case '5-day': case '5day': currentDate.setDate(currentDate.getDate() + 5); break;
+        case '10-day': case '10day': currentDate.setDate(currentDate.getDate() + 10); break;
+        case 'monthly': default: currentDate.setMonth(currentDate.getMonth() + 1); break;
+      }
+    }
+    return schedule;
+  };
+  const localSchedule = getLocalSchedulePreview();
+  return (
+    <div className="space-y-4">
+      <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
+        <Info size={15} className="mt-0.5 flex-shrink-0" />
+        Khaata qist ki schedule details. Peshgi aur har qist ki raqam daalney par duration khud-ba-khud calculate ho jaye gi.
+      </div>
+      <div
+        onClick={() => { set('noAdvance', !form.noAdvance); if (!form.noAdvance) set('advanceAmount', '0'); }}
+        className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 text-sm ${form.noAdvance ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.noAdvance ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
+          {form.noAdvance && <Check size={10} className="text-white" />}
+        </div>
+        <span className="font-medium text-slate-800">No Advance Given (Koi Peshgi Nahi)</span>
+      </div>
+      {!form.noAdvance && (
+        <Input label="Advance Amount (Peshgi Raqam) (Rs.)" field="advanceAmount" type="number" placeholder="10000" hint="If no advance, tick 'No Advance Given' above" />
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">Per Installment Amount / Qist (Rs.) <span className="text-red-500 ml-0.5">*</span></label>
+          <input type="number" value={form.perInstallmentAmount} onChange={e => setPerInstallmentAmount(e.target.value)} placeholder="5000"
+            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <p className="text-xs text-slate-400">Enter per-installment amount — total qistain auto-calculate hongi</p>
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">Kul Qistain (Total Installments)</label>
+          <input type="number" value={form.totalInstallments} onChange={e => setTotalInstallments(e.target.value)} placeholder="Khud-ba-khud calculate hogi"
+            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <p className="text-xs text-slate-400">Ya yahaan total type karein — qist auto-update hogi</p>
+        </div>
+        <Select label="Schedule Type (Qist ki Qisam)" field="scheduleType" options={SCHEDULE_TYPES} />
+        <Input label="Start Date (Shuru ki Tariikh)" field="startDate" type="date" />
+      </div>
+      {localSchedule.length > 0 && (
+        <div className="mt-6 space-y-3 pt-6 border-t border-slate-100">
+          <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">🗓️ Payment Schedule Preview</h4>
+          <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden max-h-[300px] overflow-y-auto erp-scrollbar">
+            <table className="w-full text-left border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-100/80 border-b border-slate-200 sticky top-0 backdrop-blur-md">
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">Qist No.</th>
+                  <th className="px-4 py-2.5 font-semibold text-slate-700">Tareekh / Due Date</th>
+                  <th className="px-4 py-2.5 font-semibold text-slate-700 text-right">Rakam / Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {localSchedule.map((item) => (
+                  <tr key={item.qistNo} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-4 py-2 font-medium text-slate-900">Qist {item.qistNo}</td>
+                    <td className="px-4 py-2 text-slate-600">{item.dueDate}</td>
+                    <td className="px-4 py-2 text-slate-900 font-bold text-right">{formatCurrency(item.expectedAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 font-medium">
+            💡 Dynamic duration calculated perfectly! Remaining Balance: <b>{formatCurrency(Number(form.installmentPrice || 0) - (form.noAdvance ? 0 : Number(form.advanceAmount || 0)))}</b>.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StepReview({ form, set }) {
+  const rows = [
+    ['Customer', form.fullName],
+    ['Father', form.fatherName],
+    ['CNIC', form.cnic || 'Not provided'],
+    ['Phone', form.phone],
+    ['Khata #', form.khataNumber || '—'],
+    ['Investor', form.investorName],
+    ['Category', form.category + (form.customCategory ? ` (${form.customCategory})` : '')],
+    ['Item', `${form.brand} ${form.model} ${form.color}`.trim()],
+    ['Sale Type', form.isCashSale ? '💵 CASH SALE' : '📋 Installment Plan'],
+    ['Sale Price', formatCurrency(Number(form.installmentPrice))],
+    ['Purchase Price', formatCurrency(Number(form.purchasePrice))],
+    ['Registration Fee', form.registrationFee ? formatCurrency(Number(form.registrationFee)) : 'None'],
+    ['Advance', form.noAdvance ? 'No Advance Given' : formatCurrency(Number(form.advanceAmount) || 0)],
+    ...(!form.isCashSale ? [
+      ['Per Qist', formatCurrency(Number(form.perInstallmentAmount))],
+      ['Total Qistain', form.openEnded ? 'Open-Ended' : form.totalInstallments],
+      ['Schedule', form.scheduleType],
+      ['Start Date', form.startDate],
+    ] : []),
+    ['Asset Status', form.assetStatus],
+    ...(form.assetId ? [['Asset Linked', '✅ Existing asset record']] : []),
+    ...(form.g1_name ? [['Zamin Awwal (1)', `${form.g1_name} (${form.g1_phone})`]] : []),
+    ...(form.g2_name ? [['Zamin Doam (2)', `${form.g2_name} (${form.g2_phone})`]] : []),
+  ]
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
+        ✅ Review karein aur submit karein. Sab kuch theek hai?
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex gap-2 text-sm py-1.5 border-b border-slate-100">
+            <span className="text-slate-500 min-w-[130px] flex-shrink-0">{k}</span>
+            <span className="font-semibold text-slate-900">{v}</span>
+          </div>
+        ))}
+      </div>
+      <div className="space-y-1">
+        <label className="text-sm font-medium text-slate-700">Notes (Optional)</label>
+        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
+          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none resize-none" />
+      </div>
+    </div>
+  )
+}
+
 export default function InstallmentWizard() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -376,61 +747,9 @@ export default function InstallmentWizard() {
   // └── Both fields in deps so the effect re-runs when either changes, but the
   //     body only writes to the OPPOSITE field — no circular loop possible.
 
-  const getLocalSchedulePreview = () => {
-    const price = Number(form.installmentPrice) || 0;
-    const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
-    const remainingAmount = price - advance;
-    const perInst = Number(form.perInstallmentAmount) || 0;
-
-    if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) return [];
-
-    const schedule = [];
-    const currentDate = new Date(form.startDate);
-    currentDate.setHours(0, 0, 0, 0);
-
-    const count = Math.ceil(remainingAmount / perInst);
-    let balanceTracker = remainingAmount;
-
-    for (let i = 0; i < count; i++) {
-      const dueDate = new Date(currentDate);
-      const expectedAmount = balanceTracker >= perInst ? perInst : balanceTracker;
-
-      schedule.push({
-        qistNo: i + 1,
-        dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        expectedAmount,
-      });
-
-      balanceTracker -= expectedAmount;
-
-      switch (form.scheduleType) {
-        case 'daily':
-          currentDate.setDate(currentDate.getDate() + 1);
-          break;
-        case 'weekly':
-          currentDate.setDate(currentDate.getDate() + 7);
-          break;
-        case '5-day':
-        case '5day':
-          currentDate.setDate(currentDate.getDate() + 5);
-          break;
-        case '10-day':
-        case '10day':
-          currentDate.setDate(currentDate.getDate() + 10);
-          break;
-        case 'monthly':
-        default:
-          currentDate.setMonth(currentDate.getMonth() + 1);
-          break;
-      }
-    }
-    return schedule;
-  };
-
   const set = (field, val) => setForm(p => ({ ...p, [field]: val }))
 
   // BUG 1 FIX: Wrapped handlers that set lastEdited.current before updating state.
-  // These are used for the two linked calculation fields only.
   const setPerInstallmentAmount = useCallback((val) => {
     lastEdited.current = 'perInstallment'
     setForm(p => ({ ...p, perInstallmentAmount: val }))
@@ -482,10 +801,6 @@ export default function InstallmentWizard() {
     }, 600)
   }
 
-  const useExistingAsset = () => {
-    set('assetId', chassisSearch.found._id)
-    toast.success('Existing asset record linked!')
-  }
 
   const effectiveStep = form.isCashSale && step >= 2 ? step + 1 : step
   const maxSteps = form.isCashSale ? 3 : 4
@@ -579,430 +894,8 @@ export default function InstallmentWizard() {
 
 
 
-  // ── Step 0: Customer ─────────────────────────────────────────────────────────
-  const StepCustomer = () => (
-    <div className="space-y-6">
-      {/* Locked customer banner — shown when coming from customer profile */}
-      {isAddingForExistingCustomer && prefilledCustomer ? (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0 font-black text-blue-700 text-lg">
-            {prefilledCustomer.fullName?.charAt(0)}
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-blue-900 text-sm">{prefilledCustomer.fullName}</span>
-              <Lock size={12} className="text-blue-400" />
-              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Auto-filled</span>
-            </div>
-            <p className="text-xs text-blue-700 mt-0.5">{prefilledCustomer.phone} · {prefilledCustomer.city}</p>
-            <p className="text-[11px] text-blue-500 mt-1">Customer ka record already maujood hai. Sirf naya product/plan add ho raha hai.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="border-b border-slate-100 pb-4 mb-4">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Customer Details / Grahak ki Maaloomat</h3>
-        </div>
-      )}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input label="Full Name (Poora Naam)" field="fullName" required placeholder="e.g. Muhammad Ali" />
-        <Input label="Father's Name (Walid ka Naam)" field="fatherName" required placeholder="e.g. Muhammad Hussain" />
-        <Input label="CNIC (Optional)" field="cnic" placeholder="XXXXX-XXXXXXX-X" hint="Leave blank if no CNIC available" />
-        <Input label="Phone (Mobile)" field="phone" required placeholder="0300-1234567" />
-        <Input label="City" field="city" required placeholder="e.g. Khuzdar" />
-        <Input label="Khata Number (Daftar Nambur)" field="khataNumber" placeholder="e.g. 047" hint="Owner types manually — appears on all documents" />
-      </div>
-      <Input label="Address (Ghar ka Pata)" field="address" required placeholder="Full address" />
-      <Select label="Investor / Capital (Sarmaaya Kisne Lagaya)" field="investorName" options={INVESTOR_OPTIONS} />
-
-      {/* Guarantors Accordion Section */}
-      <div className="mt-8 space-y-4 pt-6 border-t border-slate-100">
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Guarantors / Zamin (Optional)</h3>
-          <p className="text-xs text-slate-500">Provide details for up to two guarantors to print on the agreement</p>
-        </div>
-
-        {/* Guarantor 1 */}
-        <div className="border border-slate-200 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setActiveGuarantorAccordion(activeGuarantorAccordion === 'g1' ? null : 'g1')}
-            className={`w-full px-5 py-4 flex items-center justify-between text-left font-bold text-sm ${activeGuarantorAccordion === 'g1' ? 'bg-blue-50/50 text-blue-700 border-b border-slate-100' : 'bg-slate-50/50 text-slate-700 hover:bg-slate-50'}`}
-          >
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${form.g1_name && form.g1_phone ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-              <span>Guarantor 1 / Pehla Zamin (Zamin Awwal)</span>
-            </div>
-            <span className="text-xs text-slate-400 font-normal">{activeGuarantorAccordion === 'g1' ? 'Collapse ▲' : 'Expand ▼'}</span>
-          </button>
-          {activeGuarantorAccordion === 'g1' && (
-            <div className="p-5 bg-white space-y-4 animate-fadeIn">
-              {/* BUG 2 FIX: Replaced fixed <select> + duplicate English field
-                  with a single free-text + <datalist> Urdu/Roman-Urdu input.
-                  The datalist shows suggestions but DOES NOT restrict input —
-                  any text (Urdu script, Roman Urdu, English) is accepted. */}
-              <datalist id="g1-relation-suggestions">
-                {['Bhai', 'Behan', 'Dost', 'Bhabi', 'Khaala', 'Mamoo',
-                  'Phupho', 'Chacha', 'Susral', 'Sahulkar', 'Hamsaya',
-                  'Baap', 'Beta', 'Cousin', 'بھائی', 'بہن', 'دوست', 'بھابھی', 'خالہ',
-                  'مامو', 'پھوپھو', 'چچا', 'سسرال',
-                ].map(r => <option key={r} value={r} />)}
-              </datalist>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Name (Naam)" field="g1_name" placeholder="Name of Guarantor 1" />
-                <Input label="Father's Name (Walid ka Naam)" field="g1_fatherName" placeholder="Father name" />
-                <Input label="CNIC (Optional)" field="g1_cnic" placeholder="XXXXX-XXXXXXX-X" />
-                <Input label="Phone (Mobile)" field="g1_phone" placeholder="0300-1234567" />
-                {/* Single Urdu relation field replaces the old English dropdown + Urdu field pair */}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Rishta (Relation)</label>
-                  <input
-                    type="text"
-                    list="g1-relation-suggestions"
-                    value={form.g1_relationUrdu || ''}
-                    onChange={e => set('g1_relationUrdu', e.target.value)}
-                    placeholder="e.g. Bhabi, Dost, دوست, بھائی..."
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    dir="auto"
-                  />
-                </div>
-                <Input label="Work Department / Job (Mulazmat)" field="g1_workDepartment" placeholder="e.g. Police, Education, Business" />
-              </div>
-              <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g1_businessAddress" placeholder="Full shop or business address" />
-            </div>
-          )}
-        </div>
-
-        {/* Guarantor 2 */}
-        <div className="border border-slate-200 rounded-2xl overflow-hidden transition-all duration-200 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setActiveGuarantorAccordion(activeGuarantorAccordion === 'g2' ? null : 'g2')}
-            className={`w-full px-5 py-4 flex items-center justify-between text-left font-bold text-sm ${activeGuarantorAccordion === 'g2' ? 'bg-blue-50/50 text-blue-700 border-b border-slate-100' : 'bg-slate-50/50 text-slate-700 hover:bg-slate-50'}`}
-          >
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${form.g2_name && form.g2_phone ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-              <span>Guarantor 2 / Doosra Zamin (Zamin Doam)</span>
-            </div>
-            <span className="text-xs text-slate-400 font-normal">{activeGuarantorAccordion === 'g2' ? 'Collapse ▲' : 'Expand ▼'}</span>
-          </button>
-          {activeGuarantorAccordion === 'g2' && (
-            <div className="p-5 bg-white space-y-4 animate-fadeIn">
-              <datalist id="g2-relation-suggestions">
-                {['Bhai', 'Behan', 'Dost', 'Bhabi', 'Khaala', 'Mamoo',
-                  'Phupho', 'Chacha', 'Susral', 'Sahulkar', 'Hamsaya',
-                  'Baap', 'Beta', 'Cousin', 'بھائی', 'بہن', 'دوست', 'بھابھی', 'خالہ',
-                  'مامو', 'پھوپھو', 'چچا', 'سسرال',
-                ].map(r => <option key={r} value={r} />)}
-              </datalist>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Name (Naam)" field="g2_name" placeholder="Name of Guarantor 2" />
-                <Input label="Father's Name (Walid ka Naam)" field="g2_fatherName" placeholder="Father name" />
-                <Input label="CNIC (Optional)" field="g2_cnic" placeholder="XXXXX-XXXXXXX-X" />
-                <Input label="Phone (Mobile)" field="g2_phone" placeholder="0300-1234567" />
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700">Rishta (Relation)</label>
-                  <input
-                    type="text"
-                    list="g2-relation-suggestions"
-                    value={form.g2_relationUrdu || ''}
-                    onChange={e => set('g2_relationUrdu', e.target.value)}
-                    placeholder="e.g. Bhabi, Dost, دوست, بھائی..."
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                    dir="auto"
-                  />
-                </div>
-                <Input label="Work Department / Job (Mulazmat)" field="g2_workDepartment" placeholder="e.g. Police, Education, Business" />
-              </div>
-              <Input label="Business / Shop Address (Karobaar/Dukaan ka Pata)" field="g2_businessAddress" placeholder="Full shop or business address" />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-
-  // ── Step 1: Product ──────────────────────────────────────────────────────────
-  const StepProduct = () => (
-    <div className="space-y-4">
-      {/* Cash Sale Toggle */}
-      <div
-        onClick={() => set('isCashSale', !form.isCashSale)}
-        className={`cursor-pointer border-2 rounded-xl p-4 flex items-center gap-3 transition-colors ${form.isCashSale ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${form.isCashSale ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300'}`}>
-          {form.isCashSale && <Check size={11} className="text-white" />}
-        </div>
-        <div>
-          <div className="font-bold text-slate-900">💵 Direct Cash Sale (Naqd Farokht)</div>
-          <div className="text-xs text-slate-500">No installment plan — full cash payment only. Schedule step will be skipped.</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Select label="Category (Qisam)" field="category" options={CATEGORIES} required />
-        {form.category === 'other' && <Input label="Custom Category (Qisam ka Naam)" field="customCategory" placeholder="Fan, Speaker, etc." />}
-        
-        {form.category === 'other' ? (
-          <Input 
-            label="Samaan ka Naam (e.g., Orient Fan, Sony Speaker) *" 
-            field="customItemName" 
-            placeholder="Orient Fan..." 
-            required 
-          />
-        ) : (
-          <>
-            <Input label="Brand (Kumpani)" field="brand" placeholder="Honda, Samsung, etc." />
-            <Input label="Model" field="model" placeholder="CD70, Galaxy S23, etc." />
-          </>
-        )}
-        
-        <Input label="Color (Rang)" field="color" placeholder="Red, Black, White..." />
-        <Select label="Condition (Haalat)" field="condition" options={[{value:'new',label:'New'},{value:'used',label:'Used'}]} />
-      </div>
-
-      {/* Chassis detection (motorcycles/cars) */}
-      {['motorcycle','car'].includes(form.category) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Chassis # (Chassis Nambur)</label>
-            <div className="relative">
-              <input value={form.chassisNumber} onChange={e => onChassisChange(e.target.value)}
-                placeholder="Enter chassis number..."
-                className="w-full px-3 py-2 pr-9 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-              {chassisSearch.loading && <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-pulse" />}
-            </div>
-
-            {/* ── Enhanced chassis search results ── */}
-            {!chassisSearch.loading && chassisSearch.found && (() => {
-              const found = chassisSearch.found
-              const canIssue = found.canIssueNow || ['in-stock','returned','repossessed'].includes(found.currentStatus)
-              const alertType = found.statusAlert?.type || (canIssue ? 'success' : 'warning')
-              const isConflict = found.currentStatus === 'on-installment'
-              const isResold   = found.currentStatus === 'resold-other'
-              const borderColor = canIssue ? '#16a34a' : '#f59e0b'
-              const bg = canIssue ? '#f0fdf4' : '#fffbeb'
-              const textColor = canIssue ? '#15803d' : '#92400e'
-
-              return (
-                <div style={{ marginTop:'8px',padding:'12px 14px',borderRadius:'9px',border:`1.5px solid ${borderColor}`,background:bg }}>
-                  <div style={{ fontWeight:'700',fontSize:'13px',color:textColor }}>
-                    {alertType === 'success' ? '✅' : '⚠️'} {found.statusAlert?.message || found.currentStatus}
-                  </div>
-                  <div style={{ fontSize:'12px',color:'#374151',marginTop:'4px' }}>
-                    {found.brand} {found.model}{found.color ? ` — ${found.color}` : ''}
-                    &nbsp;|&nbsp;🔗 {found.totalHolderCount || 1} holder(s)
-                  </div>
-                  {found.currentHolder?.thirdPartyName && (
-                    <div style={{ fontSize:'12px',color:'#64748b' }}>Currently with: {found.currentHolder.thirdPartyName}</div>
-                  )}
-                  {found.currentHolder?.customerId?.fullName && (
-                    <div style={{ fontSize:'12px',color:'#64748b' }}>Currently with: {found.currentHolder.customerId.fullName}</div>
-                  )}
-
-                  {canIssue && !form.assetId && (
-                    <button onClick={useExistingAsset}
-                      style={{ marginTop:'8px',fontSize:'12px',background:'#16a34a',color:'white',border:'none',borderRadius:'5px',padding:'5px 12px',cursor:'pointer',fontWeight:'600' }}>
-                      ✓ Isi Asset Record se Link Karein
-                    </button>
-                  )}
-                  {form.assetId && <div style={{ marginTop:'6px',fontSize:'12px',color:'#16a34a',fontWeight:'700' }}>✅ Linked to existing asset record</div>}
-
-                  {(isConflict || isResold) && !form.assetId && (
-                    <div style={{ display:'flex',gap:'8px',alignItems:'center',marginTop:'8px' }}>
-                      <span style={{ fontSize:'11px',color:'#92400e' }}>Kya aap phir bhi proceed karna chahte hain?</span>
-                      <button
-                        onClick={() => { set('assetId', found._id); set('assetConflictNote', `Asset was ${found.currentStatus} at time of new installment`) }}
-                        style={{ fontSize:'11px',background:'#f59e0b',color:'white',border:'none',borderRadius:'4px',padding:'4px 10px',cursor:'pointer',fontWeight:'600' }}>
-                        Haan, Proceed Karein
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-
-            {!chassisSearch.loading && form.chassisNumber && form.chassisNumber.length >= 4 && !chassisSearch.found && (
-              <div style={{ marginTop:'6px',padding:'8px 12px',borderRadius:'7px',border:'1px solid #16a34a',background:'#f0fdf4',fontSize:'12px',color:'#15803d',fontWeight:'600' }}>
-                🆕 Naya Asset — System mein nahi hai. Automatically register hoga.
-              </div>
-            )}
-          </div>
-          <Input label="Engine # (Engine Nambur)" field="engineNumber" placeholder="Enter engine number" />
-        </div>
-      )}
-
-      {/* Electronics serial */}
-      {!['motorcycle','car'].includes(form.category) && (
-        <Input label="Serial Number" field="serialNumber" placeholder="IMEI or serial" />
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input label="Purchase Price / Laagte (Rs.)" field="purchasePrice" type="number" required placeholder="85000" hint="What owner paid to distributor" />
-        <Input label={`${form.isCashSale ? 'Cash Sale' : 'Installment'} Price / Bechne ki Qeemat (Rs.)`} field="installmentPrice" type="number" required placeholder="120000" />
-        <Input label="Registration Fee (Rirjistrishun) (Rs.)" field="registrationFee" type="number" placeholder="0" />
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-slate-700">Distributor (Supplier)</label>
-          <select value={form.distributor} onChange={e => set('distributor', e.target.value)}
-            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none">
-            <option value="">-- Select Distributor --</option>
-            {distributors.map(d => <option key={d._id} value={d._id}>{d.name} — {d.companyName}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <Select label="Asset Status (Maal ki Halat)" field="assetStatus" options={ASSET_STATUSES} />
-      {form.assetStatus === 'Resold-to-Other' && (
-        <div className="grid grid-cols-2 gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
-          <Input label="3rd Party Name" field="resoldToName" placeholder="Name of person" />
-          <Input label="3rd Party Phone" field="resoldToPhone" placeholder="0300-0000000" />
-        </div>
-      )}
-    </div>
-  )
-
-  // ── Step 2: Schedule ─────────────────────────────────────────────────────────
-  const StepSchedule = () => {
-    const localSchedule = getLocalSchedulePreview();
-
-    return (
-      <div className="space-y-4">
-        <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
-          <Info size={15} className="mt-0.5 flex-shrink-0" />
-          Khaata qist ki schedule details. Peshgi aur har qist ki raqam daalney par duration khud-ba-khud calculate ho jaye gi.
-        </div>
-        {/* No Advance toggle */}
-        <div
-          onClick={() => {
-            // BUG 1 FIX: noAdvance toggle must NOT set lastEdited.current.
-            // Toggling it changes 'remaining', which will re-trigger the effect
-            // in whichever direction was last active — that is the correct behaviour.
-            set('noAdvance', !form.noAdvance);
-            if (!form.noAdvance) set('advanceAmount', '0');
-          }}
-          className={`cursor-pointer border rounded-xl p-3 flex items-center gap-3 text-sm ${form.noAdvance ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${form.noAdvance ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
-            {form.noAdvance && <Check size={10} className="text-white" />}
-          </div>
-          <span className="font-medium text-slate-800">No Advance Given (Koi Peshgi Nahi)</span>
-        </div>
-        {!form.noAdvance && (
-          <Input label="Advance Amount (Peshgi Raqam) (Rs.)" field="advanceAmount" type="number" placeholder="10000" hint="If no advance, tick 'No Advance Given' above" />
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* BUG 1 FIX: use setPerInstallmentAmount to set lastEdited='perInstallment' */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Per Installment Amount / Qist (Rs.) <span className="text-red-500 ml-0.5">*</span></label>
-            <input
-              type="number"
-              value={form.perInstallmentAmount}
-              onChange={e => setPerInstallmentAmount(e.target.value)}
-              placeholder="5000"
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-            <p className="text-xs text-slate-400">Enter per-installment amount — total qistain auto-calculate hongi</p>
-          </div>
-
-          {/* BUG 1 FIX: editable total installments field with setTotalInstallments */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Kul Qistain (Total Installments)</label>
-            <input
-              type="number"
-              value={form.totalInstallments}
-              onChange={e => setTotalInstallments(e.target.value)}
-              placeholder="Khud-ba-khud calculate hogi"
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-            <p className="text-xs text-slate-400">Ya yahaan total type karein — qist auto-update hogi</p>
-          </div>
-
-          <Select label="Schedule Type (Qist ki Qisam)" field="scheduleType" options={SCHEDULE_TYPES} />
-          <Input label="Start Date (Shuru ki Tariikh)" field="startDate" type="date" />
-        </div>
-
-        {localSchedule.length > 0 && (
-          <div className="mt-6 space-y-3 pt-6 border-t border-slate-100">
-            <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">🗓️ Payment Schedule Preview</h4>
-            <div className="bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden max-h-[300px] overflow-y-auto erp-scrollbar">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-slate-100/80 border-b border-slate-200 sticky top-0 backdrop-blur-md">
-                    <th className="px-4 py-2.5 font-semibold text-slate-700">Qist No.</th>
-                    <th className="px-4 py-2.5 font-semibold text-slate-700">Tareekh / Due Date</th>
-                    <th className="px-4 py-2.5 font-semibold text-slate-700 text-right">Rakam / Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {localSchedule.map((item) => (
-                    <tr key={item.qistNo} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-4 py-2 font-medium text-slate-900">Qist {item.qistNo}</td>
-                      <td className="px-4 py-2 text-slate-600">{item.dueDate}</td>
-                      <td className="px-4 py-2 text-slate-900 font-bold text-right">{formatCurrency(item.expectedAmount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 font-medium">
-              💡 Dynamic duration calculated perfectly! Remaining Balance: <b>{formatCurrency(Number(form.installmentPrice || 0) - (form.noAdvance ? 0 : Number(form.advanceAmount || 0)))}</b>.
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // ── Step 3: Review ───────────────────────────────────────────────────────────
-  const StepReview = () => {
-    const rows = [
-      ['Customer', form.fullName],
-      ['Father', form.fatherName],
-      ['CNIC', form.cnic || 'Not provided'],
-      ['Phone', form.phone],
-      ['Khata #', form.khataNumber || '—'],
-      ['Investor', form.investorName],
-      ['Category', form.category + (form.customCategory ? ` (${form.customCategory})` : '')],
-      ['Item', `${form.brand} ${form.model} ${form.color}`.trim()],
-      ['Sale Type', form.isCashSale ? '💵 CASH SALE' : '📋 Installment Plan'],
-      ['Sale Price', formatCurrency(Number(form.installmentPrice))],
-      ['Purchase Price', formatCurrency(Number(form.purchasePrice))],
-      ['Registration Fee', form.registrationFee ? formatCurrency(Number(form.registrationFee)) : 'None'],
-      ['Advance', form.noAdvance ? 'No Advance Given' : formatCurrency(Number(form.advanceAmount) || 0)],
-      ...(!form.isCashSale ? [
-        ['Per Qist', formatCurrency(Number(form.perInstallmentAmount))],
-        ['Total Qistain', form.openEnded ? 'Open-Ended' : form.totalInstallments],
-        ['Schedule', form.scheduleType],
-        ['Start Date', form.startDate],
-      ] : []),
-      ['Asset Status', form.assetStatus],
-      ...(form.assetId ? [['Asset Linked', '✅ Existing asset record']] : []),
-      ...(form.g1_name ? [['Zamin Awwal (1)', `${form.g1_name} (${form.g1_phone})`]] : []),
-      ...(form.g2_name ? [['Zamin Doam (2)', `${form.g2_name} (${form.g2_phone})`]] : []),
-    ]
-    return (
-      <div className="space-y-4">
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 font-medium">
-          ✅ Review karein aur submit karein. Sab kuch theek hai?
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex gap-2 text-sm py-1.5 border-b border-slate-100">
-              <span className="text-slate-500 min-w-[130px] flex-shrink-0">{k}</span>
-              <span className="font-semibold text-slate-900">{v}</span>
-            </div>
-          ))}
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-slate-700">Notes (Optional)</label>
-          <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
-            className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none resize-none" />
-        </div>
-      </div>
-    )
-  }
-
-  const STEP_COMPONENTS = [StepCustomer, StepProduct, StepSchedule, StepReview]
   const visibleStepLabels = form.isCashSale ? ['Customer', 'Product', 'Review'] : STEPS
-  const CurrentStep = STEP_COMPONENTS[step]
+
 
   if (loading) {
     return (
@@ -1057,7 +950,10 @@ export default function InstallmentWizard() {
 
             {/* Form Card */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              {CurrentStep()}
+              {step === 0 && <StepCustomer form={form} set={set} isAddingForExistingCustomer={isAddingForExistingCustomer} prefilledCustomer={prefilledCustomer} activeGuarantorAccordion={activeGuarantorAccordion} setActiveGuarantorAccordion={setActiveGuarantorAccordion} />}
+              {step === 1 && <StepProduct form={form} set={set} distributors={distributors} onChassisChange={onChassisChange} chassisSearch={chassisSearch} />}
+              {step === 2 && <StepSchedule form={form} set={set} setPerInstallmentAmount={setPerInstallmentAmount} setTotalInstallments={setTotalInstallments} />}
+              {step === 3 && <StepReview form={form} set={set} />}
             </div>
 
             {/* Navigation */}
