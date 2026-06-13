@@ -358,39 +358,49 @@ function StepProduct({ form, set, distributors, onChassisChange, chassisSearch }
 }
 
 function StepSchedule({ form, set, setPerInstallmentAmount, setTotalInstallments }) {
-  const getLocalSchedulePreview = () => {
-    const price = Number(form.installmentPrice) || 0;
-    const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
-    const remainingAmount = price - advance;
-    const perInst = Number(form.perInstallmentAmount) || 0;
-    if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) return { schedule: [], total: 0 };
-    const schedule = [];
-    const currentDate = new Date(form.startDate);
-    currentDate.setHours(0, 0, 0, 0);
-    const count = Math.ceil(remainingAmount / perInst);
-    
-    // BUG FIX: Prevent UI freeze. If user types "5" for a 100,000 item, count = 20,000.
-    // Rendering 20,000 DOM nodes will hang the browser completely.
-    const MAX_PREVIEW = 120; // 10 years monthly is enough for a preview
-    const renderCount = Math.min(count, MAX_PREVIEW);
-    
-    let balanceTracker = remainingAmount;
-    for (let i = 0; i < renderCount; i++) {
-      const dueDate = new Date(currentDate);
-      const expectedAmount = balanceTracker >= perInst ? perInst : balanceTracker;
-      schedule.push({ qistNo: i + 1, dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), expectedAmount });
-      balanceTracker -= expectedAmount;
-      switch (form.scheduleType) {
-        case 'daily': currentDate.setDate(currentDate.getDate() + 1); break;
-        case 'weekly': currentDate.setDate(currentDate.getDate() + 7); break;
-        case '5-day': case '5day': currentDate.setDate(currentDate.getDate() + 5); break;
-        case '10-day': case '10day': currentDate.setDate(currentDate.getDate() + 10); break;
-        case 'monthly': default: currentDate.setMonth(currentDate.getMonth() + 1); break;
+  const [preview, setPreview] = useState({ schedule: [], total: 0 });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const price = Number(form.installmentPrice) || 0;
+      const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
+      const remainingAmount = price - advance;
+      const perInst = Number(form.perInstallmentAmount) || 0;
+      
+      if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) {
+        setPreview({ schedule: [], total: 0 });
+        return;
       }
-    }
-    return { schedule, total: count };
-  };
-  const { schedule: localSchedule, total: totalCount } = getLocalSchedulePreview();
+
+      const schedule = [];
+      const currentDate = new Date(form.startDate);
+      currentDate.setHours(0, 0, 0, 0);
+      const count = Math.ceil(remainingAmount / perInst);
+      
+      const MAX_PREVIEW = 120; // 10 years monthly is enough for a preview
+      const renderCount = Math.min(count, MAX_PREVIEW);
+      
+      let balanceTracker = remainingAmount;
+      for (let i = 0; i < renderCount; i++) {
+        const dueDate = new Date(currentDate);
+        const expectedAmount = balanceTracker >= perInst ? perInst : balanceTracker;
+        schedule.push({ qistNo: i + 1, dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), expectedAmount });
+        balanceTracker -= expectedAmount;
+        switch (form.scheduleType) {
+          case 'daily': currentDate.setDate(currentDate.getDate() + 1); break;
+          case 'weekly': currentDate.setDate(currentDate.getDate() + 7); break;
+          case '5-day': case '5day': currentDate.setDate(currentDate.getDate() + 5); break;
+          case '10-day': case '10day': currentDate.setDate(currentDate.getDate() + 10); break;
+          case 'monthly': default: currentDate.setMonth(currentDate.getMonth() + 1); break;
+        }
+      }
+      setPreview({ schedule, total: count });
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount, form.startDate, form.scheduleType]);
+
+  const { schedule: localSchedule, total: totalCount } = preview;
   return (
     <div className="space-y-4">
       <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
