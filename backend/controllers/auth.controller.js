@@ -52,10 +52,14 @@ export const login = async (req, res) => {
     const refreshToken = generateRefreshToken(user._id);
 
     // Set refresh token in HTTPOnly cookie
+    // BUGFIX: sameSite must be 'none' for cross-site requests (Vercel → Railway).
+    // 'strict' or 'lax' causes the browser to silently drop this cookie,
+    // making /api/auth/refresh always fail with 401 once access token expires.
     res.cookie('jwt', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true, // Required when sameSite='none'
+      sameSite: 'none',
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
@@ -98,8 +102,9 @@ export const refresh = async (req, res) => {
 
     res.cookie('jwt', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: true,
+      sameSite: 'none',
+      path: '/',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
@@ -113,9 +118,12 @@ export const refresh = async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 export const logout = (req, res) => {
-  res.cookie('jwt', 'none', {
-    expires: new Date(Date.now() + 10 * 1000), // Expire in 10 seconds
+  res.cookie('jwt', '', {
     httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: 0, // Immediately expire
   });
   
   res.status(200).json({ success: true, message: 'Logged out successfully' });

@@ -137,9 +137,15 @@ app.use((err, req, res, next) => {
 // ── MongoDB Connection & Server Start ─────────────────────────────────────────
 const connectDB = async () => {
   try {
+    // BUG 2 FIX: Railway cold-starts and Atlas shared-tier can take 10-20 s.
+    // serverSelectionTimeoutMS: 5000 (old) was too short — upgraded to 30 s.
+    // maxPoolSize: 10 prevents connection exhaustion under concurrent load.
+    // retryWrites: true lets MongoDB driver retry failed write ops automatically.
     const conn = await mongoose.connect(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      retryWrites: true,
     });
     console.log(`✅ MongoDB connected: ${conn.connection.host}`);
   } catch (err) {
@@ -155,6 +161,11 @@ mongoose.connection.on('error', (err) => {
 
 mongoose.connection.on('disconnected', () => {
   console.warn('⚠️  MongoDB disconnected. Attempting to reconnect...');
+});
+
+// BUG 2 FIX: Added missing 'reconnected' handler so reconnects are visible in logs.
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected successfully.');
 });
 
 // Start server after DB connects

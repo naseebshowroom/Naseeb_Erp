@@ -1,48 +1,60 @@
-import puppeteer from 'puppeteer';
+// BUG 7 FIX: Switch from `puppeteer` (full, bundled Chromium) to
+// `puppeteer-core` + `@sparticuz/chromium`.
+//
+// ROOT CAUSE: The full `puppeteer` package downloads its own Chromium during
+// `npm install`. On Railway, that bundled Chromium fails to launch because
+// the container lacks several required system libraries (libXss, libXcomposite,
+// libXrandr etc.) that are not listed in railpack.json.
+//
+// @sparticuz/chromium is a pre-compiled, statically-linked Chromium binary
+// purpose-built for serverless/container environments. It works on Railway
+// without any extra apt packages.
+//
+// REQUIRED: Run these commands in /backend:
+//   npm install puppeteer-core @sparticuz/chromium
+//   npm uninstall puppeteer
+// AND update backend/package.json accordingly.
+
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';
+import { existsSync } from 'fs';
 
 const getBrowser = async () => {
   const isProduction = process.env.NODE_ENV === 'production';
 
-  const launchOptions = {
+  if (isProduction) {
+    // Railway / serverless path — use the sparticuz statically-linked binary
+    return await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
+  }
+
+  // Local dev path — use locally installed Chrome / Chromium
+  const localChromePaths = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',       // Windows
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe', // Windows 32-bit
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',    // macOS
+    '/usr/bin/google-chrome',                                           // Linux
+    '/usr/bin/chromium-browser',                                        // Linux Chromium
+  ].filter(Boolean);
+
+  // Find the first Chrome/Chromium path that actually exists on this machine
+  const executablePath = localChromePaths.find((p) => existsSync(p)) || localChromePaths[0];
+
+  return await puppeteer.launch({
     headless: 'new',
+    executablePath,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
       '--disable-gpu',
-      '--disable-extensions',
     ],
     timeout: 30000,
-  };
-
-  if (isProduction) {
-    // On Railway: PUPPETEER_EXECUTABLE_PATH env var takes priority,
-    // then fall back to known system Chromium paths (set by nixpacks.toml)
-    const chromiumPath =
-      process.env.PUPPETEER_EXECUTABLE_PATH ||
-      '/usr/bin/chromium'          ||   // Railway / nixpacks default
-      '/usr/bin/chromium-browser';      // Debian/Ubuntu alias
-
-    launchOptions.executablePath = chromiumPath;
-  } else {
-    // Local dev: let Puppeteer use its own bundled Chrome
-    try {
-      launchOptions.executablePath = puppeteer.executablePath();
-    } catch (_) {
-      // Ignored — Puppeteer will find Chrome automatically
-    }
-  }
-
-  try {
-    return await puppeteer.launch(launchOptions);
-  } catch (err) {
-    console.warn('[PDF] Primary launch failed, retrying with system channel...', err.message);
-    return await puppeteer.launch({ ...launchOptions, channel: 'chrome', executablePath: undefined });
-  }
+  });
 };
 
 

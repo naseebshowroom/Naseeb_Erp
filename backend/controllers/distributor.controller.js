@@ -123,17 +123,32 @@ export const getDistributorById = async (req, res) => {
   }
 };
 
-// ─── CREATE ──────────────────────────────────────────────────
+// ─── CREATE ────────────────────────────────────────
 export const createDistributor = async (req, res) => {
   try {
-    const { name, companyName, phone, address, cnic, notes } = req.body;
+    const { name, companyName, phone, address, cnic, notes, category } = req.body;
+
+    // BUG 6 FIX: Validate all required fields including category.
+    // Old code only checked name/companyName/phone — missing category caused
+    // a Mongoose ValidationError (silent 400 with no useful message to the UI).
+    const VALID_CATEGORIES = ['motorcycle', 'electronics', 'car', 'other'];
     if (!name || !companyName || !phone) {
-      return res.status(400).json({ success: false, message: 'Name, company, and phone are required.' });
+      return res.status(400).json({ success: false, message: 'Naam, company aur phone zaroori hain.' });
     }
-    const distributor = await Distributor.create({ name, companyName, phone, address, cnic, notes });
+    if (!category || !VALID_CATEGORIES.includes(category)) {
+      return res.status(400).json({ success: false, message: 'Category chunna zaroori hai (motorcycle, electronics, car, ya other).' });
+    }
+
+    const distributor = await Distributor.create({ name, companyName, phone, address, cnic, notes, category });
     res.status(201).json({ success: true, data: distributor });
   } catch (error) {
-    res.status(400).json({ success: false, message: 'Error creating distributor', error: error.message });
+    // BUG 6 FIX: Handle duplicate-key error (E11000) with a clear message.
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'Is phone number ka distributor pehle se maujood hai.' });
+    }
+    // Surface the real Mongoose validation message so the frontend toast shows it
+    console.error('Create distributor error:', error);
+    res.status(400).json({ success: false, message: error.message || 'Distributor banana nahi ho saka.' });
   }
 };
 

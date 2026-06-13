@@ -224,6 +224,15 @@ export default function InstallmentDetail() {
                 <span className="text-slate-500">Rang (Color)</span>
                 <span className="font-medium text-slate-900">{data.color || 'N/A'}</span>
               </div>
+              {/* BUG 3 FIX: Show item ownership (Malikiyat) */}
+              <div className="flex justify-between py-2 border-b border-slate-100">
+                <span className="text-slate-500">Malikiyat (Ownership)</span>
+                <span className="font-bold text-slate-900">
+                  {!data.investorName || data.investorName === 'Owner'
+                    ? '🏠 Apna (Owner)'
+                    : `🤝 Partner ka — ${data.investorName}`}
+                </span>
+              </div>
               {data.engineNumber && (
                 <div className="flex justify-between py-2 border-b border-slate-100">
                   <span className="text-slate-500">Engine No.</span>

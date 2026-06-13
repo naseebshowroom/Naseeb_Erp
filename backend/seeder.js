@@ -19,8 +19,8 @@ const seedDB = async () => {
 
     if (!existingOwner) {
       await User.create({
-        username: 'owner',
-        password: 'admin123',
+        username: 'Naseeb',
+        password: 'Naseeb7971',
         fullName: 'System Administrator',
         role: 'owner',
         isActive: true

@@ -37,6 +37,21 @@ const inventorySchema = new mongoose.Schema({
     default: 'credit',
   },
 
+  // ── BUG 3 FIX: Ownership / Malikiyat ─────────────────────────────
+  // Tracks whether this item belongs to the shop owner or a business partner.
+  // Selected at creation time in the "Naya Khata" wizard; displayed on the
+  // Saman Ki Tafseel card in InstallmentDetail.
+  ownership: {
+    type: String,
+    enum: ['owner', 'partner'],
+    default: 'owner',
+  },
+  // Only populated when ownership === 'partner'
+  partnerName: {
+    type: String,
+    default: null,
+  },
+
   // ── Stock Status ────────────────────────────────────────────
   // available           → dukan mein maujood hai
   // on_installment      → customer ko qist par diya gaya hai

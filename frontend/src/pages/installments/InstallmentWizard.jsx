@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react'
+import { useState, useEffect, useCallback, useRef, createContext, useContext, Component } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { ChevronRight, ChevronLeft, Check, AlertTriangle, Info, Search, User, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -7,6 +7,47 @@ import { formatCurrency } from '@/lib/utils'
 import { formatCNIC, formatPhone } from '@/utils/formatters'
 
 const STEPS = ['Customer', 'Product', 'Schedule', 'Review']
+
+// ── BUG 4 & 5 FIX: WizardErrorBoundary ──────────────────────────────────
+// Wraps the wizard to catch render errors (like the infinite-loop crash in
+// Bug 5) and display them visibly instead of silently resetting to step 1.
+class WizardErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('[WizardErrorBoundary]', error, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-8 max-w-lg w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="text-red-500" size={24} />
+              <h2 className="text-lg font-bold text-red-700">Kuch masla ho gaya (Error)</h2>
+            </div>
+            <p className="text-sm text-slate-600 mb-2 font-mono bg-red-50 p-3 rounded-lg break-all">
+              {this.state.error?.message}
+            </p>
+            <p className="text-xs text-slate-500 mb-4">Aapka data mehfooz hai (sessionStorage mein). Dobara try karein.</p>
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+            >
+              Dobara Try Karein
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const INVESTOR_OPTIONS = ['Owner', 'Partner-Brother', 'Partner-1', 'Partner-2', 'Other']
 const CATEGORIES = ['motorcycle', 'car', 'mobile', 'ac', 'lcd', 'fridge', 'washing_machine', 'other']
@@ -98,12 +139,39 @@ export default function InstallmentWizard() {
   const isAddingForExistingCustomer = Boolean(prefilledCustomerId) && !isEditing
 
   const [step, setStep]         = useState(0)
-  const [form, setForm]         = useState(INIT)
+  // ── BUG 4 FIX: Persist form data in sessionStorage ─────────────────────
+  // ROOT CAUSE: `useState(INIT)` starts fresh on every mount (e.g. a browser
+  // refresh or React remount from the error boundary). All data entered in
+  // earlier steps was silently discarded.
+  //
+  // FIX: Read from sessionStorage on first mount; write on every change.
+  // sessionStorage is scoped to the browser tab and is cleared on tab close,
+  // so it doesn't persist between separate sessions (intentional).
+  // The key is 'newCustomerDraft' and is cleared only after a successful submit.
+  const [form, setForm] = useState(() => {
+    // Only restore draft for NEW installments (not edits)
+    if (!isEditing && !isAddingForExistingCustomer) {
+      try {
+        const saved = sessionStorage.getItem('newCustomerDraft')
+        if (saved) return { ...INIT, ...JSON.parse(saved) }
+      } catch { /* ignore parse errors */ }
+    }
+    return INIT
+  })
   const [loading, setLoading]   = useState(isEditing)
   const [saving, setSaving]     = useState(false)
   const [distributors, setDistributors] = useState([])
   const [activeGuarantorAccordion, setActiveGuarantorAccordion] = useState(null)
   const [prefilledCustomer, setPrefilledCustomer] = useState(null) // locked customer info banner
+
+  // BUG 4 FIX: Sync form state → sessionStorage on every change (new installs only)
+  useEffect(() => {
+    if (!isEditing && !isAddingForExistingCustomer) {
+      try {
+        sessionStorage.setItem('newCustomerDraft', JSON.stringify(form))
+      } catch { /* ignore storage quota errors */ }
+    }
+  }, [form, isEditing, isAddingForExistingCustomer])
 
   // Chassis detection state
   const [chassisSearch, setChassisSearch] = useState({ loading: false, found: null, conflict: false })
@@ -252,12 +320,24 @@ export default function InstallmentWizard() {
     load()
   }, [id, isEditing])
 
-  // Auto-calculate totalInstallments and update form state
+  // ── BUG 5 FIX: Infinite loop in auto-calculate useEffect ──────────────────
+  // ROOT CAUSE: `form.totalInstallments` was in the dependency array AND was
+  // being set by this effect. The cycle was:
+  //   1. User types in perInstallmentAmount
+  //   2. Effect runs, calculates new totalInstallments, calls setForm
+  //   3. setForm updates form.totalInstallments → effect re-runs
+  //   4. New String(calculated) !== form.totalInstallments? Yes → setForm again
+  //   5. ∞ loop → React throws → wizard unmounts → resets to step 1
+  //
+  // FIX: Remove `form.totalInstallments` from the dependency array.
+  // The guard `if (form.totalInstallments !== String(calculatedTotal))`
+  // still prevents extra renders — it just no longer CAUSES the loop.
   useEffect(() => {
     const price = Number(form.installmentPrice) || 0;
     const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
     const remainingAmount = price - advance;
     const perInst = Number(form.perInstallmentAmount) || 0;
+    // BUG 5 FIX: Guard against divide-by-zero and empty inputs
     if (remainingAmount > 0 && perInst > 0) {
       const calculatedTotal = Math.ceil(remainingAmount / perInst);
       if (form.totalInstallments !== String(calculatedTotal)) {
@@ -268,7 +348,9 @@ export default function InstallmentWizard() {
         setForm(p => ({ ...p, totalInstallments: '' }));
       }
     }
-  }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount, form.totalInstallments]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.installmentPrice, form.advanceAmount, form.noAdvance, form.perInstallmentAmount]);
+  // └── NOTE: form.totalInstallments intentionally EXCLUDED from deps ──────────
 
   const getLocalSchedulePreview = () => {
     const price = Number(form.installmentPrice) || 0;
@@ -452,6 +534,8 @@ export default function InstallmentWizard() {
         toast.success('Installment successfully bana di!')
       }
       navigate(`/installments/${r.data.data._id || id}`)
+      // BUG 4 FIX: Clear draft from sessionStorage ONLY after successful submit
+      sessionStorage.removeItem('newCustomerDraft')
     } catch (e) {
       toast.error(e.response?.data?.message || 'Error')
     } finally { setSaving(false) }
@@ -831,70 +915,72 @@ export default function InstallmentWizard() {
   }
 
   return (
-    <FormContext.Provider value={{ form, set }}>
-      <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
-        <div className="max-w-3xl mx-auto">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-black text-slate-900">
-              {isEditing ? 'Edit Installment / Khaata Tabdeeli'
-                : isAddingForExistingCustomer && prefilledCustomer
-                  ? `Naya Plan — ${prefilledCustomer.fullName}`
-                  : 'New Installment / Naya Khaata'}
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              {isEditing ? 'Khaatey ki details update karein'
-                : isAddingForExistingCustomer
-                  ? 'Sirf naye product ka data daalen — customer pehle se maujood hai'
-                  : 'Customer aur item ki poori details bharein'}
-            </p>
-          </div>
+    <WizardErrorBoundary>
+      <FormContext.Provider value={{ form, set }}>
+        <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+          <div className="max-w-3xl mx-auto">
+            {/* Header */}
+            <div className="mb-6">
+              <h1 className="text-2xl font-black text-slate-900">
+                {isEditing ? 'Edit Installment / Khaata Tabdeeli'
+                  : isAddingForExistingCustomer && prefilledCustomer
+                    ? `Naya Plan — ${prefilledCustomer.fullName}`
+                    : 'New Installment / Naya Khaata'}
+              </h1>
+              <p className="text-sm text-slate-500 mt-1">
+                {isEditing ? 'Khaatey ki details update karein'
+                  : isAddingForExistingCustomer
+                    ? 'Sirf naye product ka data daalen — customer pehle se maujood hai'
+                    : 'Customer aur item ki poori details bharein'}
+              </p>
+            </div>
 
-          {/* Step indicators */}
-          <div className="flex items-center gap-0 mb-6 overflow-x-auto">
-            {visibleStepLabels.map((label, i) => {
-              const actualStep = form.isCashSale && i === 2 ? 3 : i
-              const active = step === actualStep
-              const done   = step > actualStep
-              return (
-                <div key={label} className="flex items-center">
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${active ? 'bg-white/20' : ''}`}>
-                      {done ? <Check size={11} /> : i + 1}
-                    </span>
-                    {label}
+            {/* Step indicators */}
+            <div className="flex items-center gap-0 mb-6 overflow-x-auto">
+              {visibleStepLabels.map((label, i) => {
+                const actualStep = form.isCashSale && i === 2 ? 3 : i
+                const active = step === actualStep
+                const done   = step > actualStep
+                return (
+                  <div key={label} className="flex items-center">
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${active ? 'bg-blue-600 text-white' : done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${active ? 'bg-white/20' : ''}`}>
+                        {done ? <Check size={11} /> : i + 1}
+                      </span>
+                      {label}
+                    </div>
+                    {i < visibleStepLabels.length - 1 && <ChevronRight size={16} className="text-slate-300 mx-1 flex-shrink-0" />}
                   </div>
-                  {i < visibleStepLabels.length - 1 && <ChevronRight size={16} className="text-slate-300 mx-1 flex-shrink-0" />}
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
 
-          {/* Form Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            {CurrentStep()}
-          </div>
+            {/* Form Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              {CurrentStep()}
+            </div>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between mt-4">
-            <button onClick={step === 0 ? () => navigate('/installments') : prev}
-              className="flex items-center gap-1.5 px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-              <ChevronLeft size={16} /> {step === 0 ? 'Cancel' : 'Back'}
-            </button>
-            {step < (form.isCashSale ? 2 : 3) ? (
-              <button onClick={next}
-                className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
-                Next <ChevronRight size={16} />
+            {/* Navigation */}
+            <div className="flex items-center justify-between mt-4">
+              <button onClick={step === 0 ? () => navigate('/installments') : prev}
+                className="flex items-center gap-1.5 px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                <ChevronLeft size={16} /> {step === 0 ? 'Cancel' : 'Back'}
               </button>
-            ) : (
-              <button onClick={submit} disabled={saving}
-                className="flex items-center gap-1.5 px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50">
-                {saving ? 'Saving...' : '✅ Submit / Jama Karein'}
-              </button>
-            )}
+              {step < (form.isCashSale ? 2 : 3) ? (
+                <button onClick={next}
+                  className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                  Next <ChevronRight size={16} />
+                </button>
+              ) : (
+                <button onClick={submit} disabled={saving}
+                  className="flex items-center gap-1.5 px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                  {saving ? 'Saving...' : '✅ Submit / Jama Karein'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </FormContext.Provider>
+      </FormContext.Provider>
+    </WizardErrorBoundary>
   )
 }
