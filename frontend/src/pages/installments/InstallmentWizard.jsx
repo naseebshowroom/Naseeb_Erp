@@ -363,13 +363,19 @@ function StepSchedule({ form, set, setPerInstallmentAmount, setTotalInstallments
     const advance = form.noAdvance ? 0 : Number(form.advanceAmount) || 0;
     const remainingAmount = price - advance;
     const perInst = Number(form.perInstallmentAmount) || 0;
-    if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) return [];
+    if (remainingAmount <= 0 || perInst <= 0 || !form.startDate) return { schedule: [], total: 0 };
     const schedule = [];
     const currentDate = new Date(form.startDate);
     currentDate.setHours(0, 0, 0, 0);
     const count = Math.ceil(remainingAmount / perInst);
+    
+    // BUG FIX: Prevent UI freeze. If user types "5" for a 100,000 item, count = 20,000.
+    // Rendering 20,000 DOM nodes will hang the browser completely.
+    const MAX_PREVIEW = 120; // 10 years monthly is enough for a preview
+    const renderCount = Math.min(count, MAX_PREVIEW);
+    
     let balanceTracker = remainingAmount;
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < renderCount; i++) {
       const dueDate = new Date(currentDate);
       const expectedAmount = balanceTracker >= perInst ? perInst : balanceTracker;
       schedule.push({ qistNo: i + 1, dueDate: dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), expectedAmount });
@@ -382,9 +388,9 @@ function StepSchedule({ form, set, setPerInstallmentAmount, setTotalInstallments
         case 'monthly': default: currentDate.setMonth(currentDate.getMonth() + 1); break;
       }
     }
-    return schedule;
+    return { schedule, total: count };
   };
-  const localSchedule = getLocalSchedulePreview();
+  const { schedule: localSchedule, total: totalCount } = getLocalSchedulePreview();
   return (
     <div className="space-y-4">
       <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-2 text-sm text-blue-700">
@@ -438,6 +444,13 @@ function StepSchedule({ form, set, setPerInstallmentAmount, setTotalInstallments
                     <td className="px-4 py-2 text-slate-900 font-bold text-right">{formatCurrency(item.expectedAmount)}</td>
                   </tr>
                 ))}
+                {totalCount > 120 && (
+                  <tr className="bg-amber-50">
+                    <td colSpan="3" className="px-4 py-3 text-center text-sm font-medium text-amber-700">
+                      ... Aur {totalCount - 120} qistain (Schedule is very long, preview limited to 120)
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
